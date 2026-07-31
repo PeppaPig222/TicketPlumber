@@ -13,6 +13,7 @@ from agentscope.message import Msg
 from agents.diagnosis_intention_agent import DiagnosisIntentionAgent
 from agents.loop_decider import LoopDecider
 from agents.orchestration_agent import OrchestrationAgent
+from context.long_term_memory import LongTermMemory
 from skills.registry import SkillRegistry
 from utils.logging_config import set_trace_id
 from utils.trace_collector import TraceCollector, format_trace_sse
@@ -38,7 +39,12 @@ class TraceRepository:
 class DiagnosisService:
     """小哈工单智能诊断助手的核心执行入口。"""
 
-    def __init__(self, trace_repo: Optional[TraceRepository] = None):
+    def __init__(
+        self,
+        trace_repo: Optional[TraceRepository] = None,
+        user_id: str = "diagbot_user",
+        storage_path: str = "data/memory",
+    ):
         self.trace_repo = trace_repo or TraceRepository()
         self.intention_agent = DiagnosisIntentionAgent()
         self.orchestrator = OrchestrationAgent(
@@ -47,6 +53,7 @@ class DiagnosisService:
             memory_manager=None,
         )
         self.loop_decider = LoopDecider(max_rounds=3)
+        self.long_term_memory = LongTermMemory(user_id=user_id, storage_path=storage_path)
 
     async def diagnose(self, query: str) -> Dict[str, Any]:
         trace_id = str(uuid.uuid4())[:8]
@@ -105,6 +112,7 @@ class DiagnosisService:
                 "events": format_trace_sse(trace.get_trace()),
             },
         )
+        self._save_diagnosis_history(diagnosis, state)
         return diagnosis
 
     async def get_trace(self, trace_id: str) -> Optional[Dict[str, Any]]:
@@ -120,10 +128,12 @@ class DiagnosisService:
         return payload.get("events", [])
 
     def get_metrics(self) -> Dict[str, Any]:
+        stats = self.long_term_memory.get_statistics()
         return {
             "trace_count": self.trace_repo.count(),
             "max_rounds": self.loop_decider.max_rounds,
             "registered_skills": len(list(self.orchestrator.agent_registry.keys())),
+            "total_diagnoses": stats.get("total_diagnoses", 0),
         }
 
     async def _load_ticket_context(self, query: str) -> Dict[str, Any]:
@@ -260,6 +270,22 @@ class DiagnosisService:
                 "补充重试和告警机制",
             ]
         return resolver
+
+    def _save_diagnosis_history(self, diagnosis: Dict[str, Any], state: Dict[str, Any]):
+        facts = (state.get("collected_data", {}) or {}).get("facts", {})
+        diagnosis_payload = diagnosis.get("diagnosis", {})
+        self.long_term_memory.save_diagnosis_history({
+            "trace_id": diagnosis.get("trace_id"),
+            "ticket_id": diagnosis.get("ticket_id", ""),
+            "merchant_id": facts.get("merchant_id", ""),
+            "issue_type": facts.get("issue_type", ""),
+            "scenario": diagnosis.get("scenario", ""),
+            "summary": diagnosis_payload.get("summary", ""),
+            "responsible_party": diagnosis_payload.get("responsible_party", ""),
+            "root_cause": diagnosis_payload.get("root_cause", ""),
+            "query": state.get("query", ""),
+            "status": diagnosis.get("status", "completed"),
+        })
 
     def _extract(self, text: str, pattern: str) -> str:
         matched = re.search(pattern, text or "")

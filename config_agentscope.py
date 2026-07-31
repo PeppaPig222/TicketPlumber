@@ -1,9 +1,9 @@
 """
-AgentScope Configuration for Aligo Multi-Agent Travel Planning System
+AgentScope Configuration for DiagBot Ticket Diagnosis System
 适配 AgentScope 1.0.16+
 """
 import agentscope
-from config import LLM_CONFIG
+from config import APP_CONFIG, LLM_CONFIG
 
 def init_agentscope():
     """
@@ -14,8 +14,8 @@ def init_agentscope():
     - 模型配置改为直接在Agent初始化时指定
     """
     agentscope.init(
-        project="Aligo-Travel-Planning",
-        name="multi_agent_system",
+        project=APP_CONFIG["project_name"],
+        name="ticket_diagnosis_system",
         logging_level="INFO"
     )
 

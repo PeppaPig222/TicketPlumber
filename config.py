@@ -1,6 +1,12 @@
 """
-Configuration for the Aligo Multi-Agent System
+Configuration for the DiagBot Ticket Diagnosis System
 """
+
+APP_CONFIG = {
+    "app_name": "DiagBot 工单智能诊断助手",
+    "project_name": "diagbot-ticket-diagnosis",
+    "project_display_name": "小哈工单智能诊断助手",
+}
 
 # LLM Configuration
 LLM_CONFIG = {

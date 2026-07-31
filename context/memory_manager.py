@@ -15,7 +15,7 @@ class MemoryManager:
     """
     记忆管理器：统一管理两层记忆
     - 短期记忆：最近对话（会话级）
-    - 长期记忆：用户偏好和历史（跨会话）
+    - 长期记忆：用户偏好和诊断历史（跨会话）
     """
 
     def __init__(self, user_id: str, session_id: str, storage_path: str = "data/memory", llm_model=None):
@@ -76,8 +76,11 @@ class MemoryManager:
             "long_term": {
                 "preferences": self.long_term.get_preference(),
                 "chat_history": self.long_term.get_chat_history(10),
-                "trip_history": self.long_term.get_trip_history(5),
-                "frequent_destinations": self.long_term.get_frequent_destinations(3),
+                "diagnosis_history": self.long_term.get_diagnosis_history(5),
+                "common_issue_types": self.long_term.get_common_issue_types(3),
+                # 保留兼容字段，避免旧调用方直接读取时出错
+                "trip_history": self.long_term.get_diagnosis_history(5),
+                "frequent_destinations": self.long_term.get_common_issue_types(3),
                 "statistics": self.long_term.get_statistics()
             }
         }
@@ -146,11 +149,11 @@ class MemoryManager:
             if msg.get("session_id") != self.session_id
         ]
 
-        # 获取行程历史
-        trip_history = self.long_term.get_trip_history(limit=20)
+        # 获取诊断历史
+        diagnosis_history = self.long_term.get_diagnosis_history(limit=20)
 
-        # 如果既没有聊天记录也没有行程记录，直接返回
-        if not history_from_other_sessions and not trip_history:
+        # 如果既没有聊天记录也没有诊断记录，直接返回
+        if not history_from_other_sessions and not diagnosis_history:
             return ""
 
         # 构建聊天记录文本
@@ -163,37 +166,32 @@ class MemoryManager:
 
         history_str = "\n".join(history_text) if history_text else "（无聊天记录）"
 
-        # 构建行程历史文本
-        trip_text = []
-        for trip in trip_history:
-            origin = trip.get("origin", "未知")
-            destination = trip.get("destination", "未知")
-            start_date = trip.get("start_date", "")
-            end_date = trip.get("end_date", "")
-            purpose = trip.get("purpose", "旅游")
-            timestamp = trip.get("timestamp", "")
+        # 构建诊断历史文本
+        diagnosis_text = []
+        for diagnosis in diagnosis_history:
+            timestamp = diagnosis.get("timestamp", "")
+            ticket_id = diagnosis.get("ticket_id", "未知工单")
+            issue_type = diagnosis.get("issue_type", "未知问题")
+            responsible_party = diagnosis.get("responsible_party", "待判定")
+            summary = diagnosis.get("summary", "")
+            diagnosis_text.append(
+                f"[{timestamp}] {ticket_id} / {issue_type} / 归属: {responsible_party} / 摘要: {summary}"
+            )
 
-            if start_date and end_date:
-                trip_text.append(f"[{timestamp}] {origin} → {destination} ({start_date} 至 {end_date}) - {purpose}")
-            elif start_date:
-                trip_text.append(f"[{timestamp}] {origin} → {destination} ({start_date}) - {purpose}")
-            else:
-                trip_text.append(f"[{timestamp}] {origin} → {destination} - {purpose}")
-
-        trip_str = "\n".join(trip_text) if trip_text else "（无行程记录）"
+        diagnosis_str = "\n".join(diagnosis_text) if diagnosis_text else "（无诊断记录）"
 
         # 使用LLM总结
         summarization_prompt = f"""请总结以下历史信息中的关键内容，包括：
-1. 用户的旅行偏好和习惯
-2. 用户询问过的重要问题
-3. 用户的出行历史和目的地
+1. 用户在工单诊断中关注的问题类型
+2. 历史工单的根因与责任归属
+3. 反复出现的异常模式或处理建议
 4. 其他重要的上下文信息
 
 【历史聊天记录】
 {history_str}
 
-【历史行程记录】
-{trip_str}
+【历史诊断记录】
+{diagnosis_str}
 
 请用简洁的语言总结（不超过200字）："""
 

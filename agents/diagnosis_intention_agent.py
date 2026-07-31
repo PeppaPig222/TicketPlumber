@@ -8,6 +8,7 @@ import re
 from typing import Any, Dict, List
 
 from agentscope.message import Msg
+from utils.tool_registry import tool_registry
 
 
 class DiagnosisIntentionAgent:
@@ -20,7 +21,7 @@ class DiagnosisIntentionAgent:
         payload = self._parse_payload(x)
         round_num = payload.get("round_num", 1)
         query = payload.get("query", "")
-        ticket = payload.get("ticket", {}) or {}
+        ticket = await self._enrich_ticket(payload.get("ticket", {}) or {}, query)
         collected_data = payload.get("collected_data", {}) or {}
 
         key_entities = self._build_entities(query, ticket, collected_data)
@@ -107,6 +108,14 @@ class DiagnosisIntentionAgent:
 
     def _build_schedule(self, scenario: str, round_num: int) -> List[Dict[str, Any]]:
         schedules = {
+            "generic_ticket_diagnosis": {
+                1: [
+                    self._task("get_merchant_profile", 1, "尝试补全商户上下文", "商户画像"),
+                    self._task("search_history_ticket", 1, "检索类似工单", "历史处理经验"),
+                ],
+                2: [],
+                3: [],
+            },
             "order_status_anomaly": {
                 1: [
                     self._task("get_order_detail", 1, "获取订单当前状态", "订单基础详情"),
@@ -177,7 +186,22 @@ class DiagnosisIntentionAgent:
             return "asset_allocation_failure"
         if "订单" in source:
             return "order_status_anomaly"
-        return "order_status_anomaly"
+        return "generic_ticket_diagnosis"
+
+    async def _enrich_ticket(self, ticket: Dict[str, Any], query: str) -> Dict[str, Any]:
+        if ticket.get("ticket_id") and ticket.get("issue_type"):
+            return ticket
+
+        ticket_id = ticket.get("ticket_id") or self._extract(query, r"WO-\d{8}-\d{4}")
+        if not ticket_id:
+            return ticket
+
+        result = await tool_registry.execute("query_ticket", ticket_id=ticket_id)
+        if result.get("status") == "success" and isinstance(result.get("data"), dict):
+            merged = dict(ticket)
+            merged.update(result.get("data"))
+            return merged
+        return ticket
 
     def _extract(self, text: str, pattern: str) -> str:
         matched = re.search(pattern, text or "")
