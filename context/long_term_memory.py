@@ -5,6 +5,7 @@
 from typing import Dict, Any, List, Optional
 import json
 import os
+import warnings
 from datetime import datetime
 from pathlib import Path
 import logging
@@ -150,7 +151,7 @@ class LongTermMemory:
             "user_id": self.user_id,
             "created_at": datetime.now().isoformat(),
             "updated_at": datetime.now().isoformat(),
-            "preferences": [],  # 偏好列表: [{"type": "home_location", "value": "天津"}, ...]
+            "preferences": [],  # 偏好列表: [{"type": "notification_channel", "value": "企业微信"}, ...]
             "chat_history": [],  # 所有聊天记录（跨会话）
             "diagnosis_history": [],  # 所有诊断记录
             "statistics": {
@@ -219,56 +220,6 @@ class LongTermMemory:
                 if pref.get("type") == pref_type:
                     return pref.get("value")
             return None
-
-    def add_hotel_brand(self, brand: str):
-        """添加酒店品牌偏好（追加到列表）"""
-        # 查找 hotel_brands 偏好
-        preferences = self.data["preferences"]
-        found = False
-
-        for pref in preferences:
-            if pref.get("type") == "hotel_brands":
-                # 确保 value 是列表
-                if not isinstance(pref["value"], list):
-                    pref["value"] = [pref["value"]] if pref["value"] else []
-
-                # 追加品牌
-                if brand not in pref["value"]:
-                    pref["value"].append(brand)
-                found = True
-                break
-
-        # 如果不存在，创建新的
-        if not found:
-            preferences.append({"type": "hotel_brands", "value": [brand]})
-
-        self._save()
-        logger.info(f"Added hotel brand preference: {brand}")
-
-    def add_airline(self, airline: str):
-        """添加航空公司偏好（追加到列表）"""
-        # 查找 airlines 偏好
-        preferences = self.data["preferences"]
-        found = False
-
-        for pref in preferences:
-            if pref.get("type") == "airlines":
-                # 确保 value 是列表
-                if not isinstance(pref["value"], list):
-                    pref["value"] = [pref["value"]] if pref["value"] else []
-
-                # 追加航空公司
-                if airline not in pref["value"]:
-                    pref["value"].append(airline)
-                found = True
-                break
-
-        # 如果不存在，创建新的
-        if not found:
-            preferences.append({"type": "airlines", "value": [airline]})
-
-        self._save()
-        logger.info(f"Added airline preference: {airline}")
 
     def add_chat_message(self, role: str, content: str, session_id: str = None):
         """
@@ -365,14 +316,20 @@ class LongTermMemory:
         sorted_items = sorted(issue_stats.items(), key=lambda x: x[1], reverse=True)
         return sorted_items[:top_n]
 
-    # 兼容旧接口：将旧 trip_history 访问映射到 diagnosis_history
+    # ── 兼容旧接口（@deprecated）─────────────────────────────────────
+    # 诊断域主链路不再直接使用这些名称，仅保留以避免旧测试/脚本立即失效。
+    # 新代码请直接使用 save_diagnosis_history / get_diagnosis_history。
+
     def save_trip_history(self, trip_info: Dict[str, Any]):
+        warnings.warn("save_trip_history is deprecated, use save_diagnosis_history", DeprecationWarning, stacklevel=2)
         self.save_diagnosis_history(trip_info)
 
     def get_trip_history(self, limit: int = 10) -> List[Dict[str, Any]]:
+        warnings.warn("get_trip_history is deprecated, use get_diagnosis_history", DeprecationWarning, stacklevel=2)
         return self.get_diagnosis_history(limit)
 
     def get_frequent_destinations(self, top_n: int = 5) -> List[tuple]:
+        warnings.warn("get_frequent_destinations is deprecated, use get_common_issue_types", DeprecationWarning, stacklevel=2)
         return self.get_common_issue_types(top_n)
 
     def increment_query_count(self):

@@ -91,13 +91,13 @@ class MemoryQueryAgent(AgentBase):
             )
 
         # 获取长期记忆
-        trip_history = []
+        diagnosis_history = []
         preferences = {}
         chat_summary = ""
 
         if self.memory_manager:
-            # 获取旅行历史（最近50条）
-            trip_history = self.memory_manager.long_term.get_trip_history(limit=50)
+            # 获取诊断历史（最近50条）
+            diagnosis_history = self.memory_manager.long_term.get_diagnosis_history(limit=50)
 
             # 获取用户偏好
             preferences = self.memory_manager.long_term.get_preference()
@@ -109,8 +109,8 @@ class MemoryQueryAgent(AgentBase):
                 logger.warning(f"Failed to get chat summary: {e}")
                 chat_summary = ""
 
-        # 格式化旅行历史
-        trip_text = self._format_trip_history(trip_history)
+        # 格式化诊断历史
+        diagnosis_text = self._format_diagnosis_history(diagnosis_history)
 
         # 格式化偏好
         pref_text = self._format_preferences(preferences)
@@ -118,16 +118,16 @@ class MemoryQueryAgent(AgentBase):
         # 动态读取 Prompt 指令 (Progressive Disclosure)
         skill_instruction = self.skill_loader.get_skill_content("memory-query")
         if not skill_instruction:
-            skill_instruction = "请基于用户的历史记忆回答问题，如无相关记录请诚实说明。"
+            skill_instruction = "请基于用户的诊断历史回答问题，如无相关记录请诚实说明。"
 
         # 构建 prompt
-        prompt = f"""你是一个个人记忆助手，请基于用户的历史记忆回答问题。
+        prompt = f"""你是一个工单诊断历史助手，请基于用户的诊断历史和偏好回答问题。
 
 【用户问题】
 {user_query}
 
-【用户旅行历史】
-{trip_text}
+【诊断历史】
+{diagnosis_text}
 
 【用户偏好】
 {pref_text}
@@ -142,7 +142,7 @@ class MemoryQueryAgent(AgentBase):
         try:
             # 调用LLM生成回答
             response = await self.model([
-                {"role": "system", "content": "你是一个个人记忆助手，帮助用户查询和理解他们的历史记录。"},
+                {"role": "system", "content": "你是一个工单诊断历史助手，帮助查询和理解用户的诊断记录。"},
                 {"role": "user", "content": prompt}
             ])
 
@@ -179,7 +179,7 @@ class MemoryQueryAgent(AgentBase):
                 "query": user_query,
                 "answer": answer,
                 "memory_sources": {
-                    "trip_count": len(trip_history),
+                    "diagnosis_count": len(diagnosis_history),
                     "has_preferences": any(v for v in preferences.values() if v),
                     "has_chat_summary": bool(chat_summary)
                 }
@@ -202,26 +202,30 @@ class MemoryQueryAgent(AgentBase):
                 role="assistant"
             )
 
-    def _format_trip_history(self, trip_history: List[Dict]) -> str:
-        """格式化旅行历史"""
-        if not trip_history:
-            return "（暂无旅行记录）"
+    def _format_diagnosis_history(self, diagnosis_history: List[Dict]) -> str:
+        """格式化诊断历史记录"""
+        if not diagnosis_history:
+            return "（暂无诊断记录）"
 
         lines = []
-        for i, trip in enumerate(trip_history, 1):
-            origin = trip.get("origin", "未知")
-            destination = trip.get("destination", "未知")
-            start_date = trip.get("start_date", "")
-            end_date = trip.get("end_date", "")
-            purpose = trip.get("purpose", "旅游")
-            timestamp = trip.get("timestamp", "")
+        for i, record in enumerate(diagnosis_history, 1):
+            ticket_id = record.get("ticket_id", record.get("diagnosis_id", f"记录{i}"))
+            issue_type = record.get("issue_type", record.get("purpose", "未分类"))
+            resolution = record.get("resolution", record.get("destination", ""))
+            category = record.get("category", "")
+            timestamp = record.get("timestamp", "")
 
-            if start_date and end_date:
-                lines.append(f"{i}. {origin} → {destination} ({start_date} 至 {end_date}) - {purpose}")
-            elif start_date:
-                lines.append(f"{i}. {origin} → {destination} ({start_date}) - {purpose}")
-            else:
-                lines.append(f"{i}. {origin} → {destination} - {purpose} (记录时间: {timestamp})")
+            parts = [f"{i}. 工单#{ticket_id}"]
+            if issue_type:
+                parts.append(f"[{issue_type}]")
+            if category:
+                parts.append(f"({category})")
+            if resolution:
+                parts.append(f"- 结论: {resolution}")
+            if timestamp:
+                parts.append(f"({timestamp})")
+
+            lines.append(" ".join(parts))
 
         return "\n".join(lines)
 
@@ -232,11 +236,10 @@ class MemoryQueryAgent(AgentBase):
 
         lines = []
         pref_names = {
-            "budget": "预算偏好",
-            "accommodation": "住宿偏好",
-            "transportation": "交通偏好",
-            "food": "餐饮偏好",
-            "activity": "活动偏好",
+            "notification_channel": "通知渠道",
+            "priority_level": "优先排查类型",
+            "auto_assign": "自动分配偏好",
+            "report_format": "报告格式偏好",
             "other": "其他偏好"
         }
 

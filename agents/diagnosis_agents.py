@@ -1,7 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-工单诊断场景下的原子 Skill Agent 与诊断路径 Agent。
+工单诊断场景下的原子 Skill 执行器。
+
+说明：
+- 这些执行器负责“单个 Skill 如何查一个数据源”
+- Batch 1 之后，外层主链路改为由 CodeAgent / OperationAgent / DataAgent / ResolutionAgent 调用
+- 本文件继续保留，作为底层 Skill 层，供专业 Agent 受控组合使用
 """
 import json
 import time

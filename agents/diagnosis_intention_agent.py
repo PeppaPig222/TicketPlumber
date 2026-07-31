@@ -12,7 +12,7 @@ from utils.tool_registry import tool_registry
 
 
 class DiagnosisIntentionAgent:
-    """基于工单上下文生成每一轮的 Skill 调度计划。"""
+    """基于工单上下文生成每一轮的专业 Agent 调度计划。"""
 
     def __init__(self, name: str = "DiagnosisIntentionAgent"):
         self.name = name
@@ -110,60 +110,65 @@ class DiagnosisIntentionAgent:
         schedules = {
             "generic_ticket_diagnosis": {
                 1: [
-                    self._task("get_merchant_profile", 1, "尝试补全商户上下文", "商户画像"),
-                    self._task("search_history_ticket", 1, "检索类似工单", "历史处理经验"),
+                    self._task("OperationAgent", 1, "尝试补全商户上下文与历史经验", "商户画像与历史案例"),
+                    self._task("DataAgent", 1, "预热基础实体", "基础数据事实"),
                 ],
-                2: [],
+                2: [
+                    self._task("CodeAgent", 1, "从技术链路视角补充诊断", "技术侧线索"),
+                    self._task("OperationAgent", 1, "从业务流程视角补充诊断", "操作侧线索"),
+                    self._task("DataAgent", 1, "从数据视角补充诊断", "数据侧线索"),
+                    self._task("ResolutionAgent", 2, "汇总证据并给出初步结论", "归因建议"),
+                ],
                 3: [],
             },
             "order_status_anomaly": {
                 1: [
-                    self._task("get_order_detail", 1, "获取订单当前状态", "订单基础详情"),
-                    self._task("get_order_timeline", 1, "重建订单时间线", "订单关键事件序列"),
-                    self._task("get_merchant_profile", 1, "查询商户基础信息", "商户画像"),
-                    self._task("search_history_ticket", 1, "检索相似历史工单", "历史处理经验"),
+                    self._task("CodeAgent", 1, "获取订单当前状态与时间线", "订单基础详情"),
+                    self._task("OperationAgent", 1, "查询商户与历史工单上下文", "商户画像与历史经验"),
+                    self._task("DataAgent", 1, "预热订单关键实体", "后续一致性校验事实"),
                 ],
                 2: [
-                    self._task("order_code_path", 1, "排查技术链路", "前后端代码与接口状态"),
-                    self._task("order_operation_path", 1, "排查用户操作", "用户是否误操作"),
-                    self._task("order_data_path", 1, "排查数据一致性", "跨表比对与回调链路"),
+                    self._task("CodeAgent", 1, "排查技术链路", "前后端代码与接口状态"),
+                    self._task("OperationAgent", 1, "排查用户操作", "用户是否误操作"),
+                    self._task("DataAgent", 1, "排查数据一致性", "跨表比对与回调链路"),
                 ],
                 3: [
-                    self._task("search_policy_faq", 1, "补充知识库处理建议", "FAQ 经验"),
-                    self._task("search_history_ticket", 1, "复核历史案例", "同类工单结果"),
-                    self._task("root_cause_resolver", 2, "汇总结论并判责", "根因与建议"),
+                    self._task("CodeAgent", 1, "复核技术链路结论", "技术侧复核"),
+                    self._task("OperationAgent", 1, "复核业务操作结论", "操作侧复核"),
+                    self._task("DataAgent", 1, "复核数据异常结论", "数据侧复核"),
+                    self._task("ResolutionAgent", 2, "汇总结论并判责", "根因与建议"),
                 ],
             },
             "asset_allocation_failure": {
                 1: [
-                    self._task("get_asset_pool", 1, "获取资产池概况", "可用额度"),
-                    self._task("get_asset_allocation", 1, "获取分配记录", "当前分配情况"),
-                    self._task("get_user_binding", 1, "获取用户绑定信息", "绑定状态"),
-                    self._task("search_history_ticket", 1, "检索类似工单", "历史经验"),
+                    self._task("CodeAgent", 1, "获取资产池与系统配置基础信息", "额度与配置概况"),
+                    self._task("OperationAgent", 1, "获取用户绑定与历史经验", "绑定状态与历史案例"),
+                    self._task("DataAgent", 1, "预热资产与分配实体", "可用额度与分配事实"),
                 ],
                 2: [
-                    self._task("asset_availability_path", 1, "检查额度限制", "额度是否足够"),
-                    self._task("asset_binding_path", 1, "检查绑定与保护期", "用户归属限制"),
-                    self._task("asset_permission_path", 1, "检查操作者权限", "权限限制"),
+                    self._task("CodeAgent", 1, "检查系统配置与权限开关", "系统配置限制"),
+                    self._task("OperationAgent", 1, "检查绑定与保护期", "用户归属限制"),
+                    self._task("DataAgent", 1, "检查额度限制", "额度是否足够"),
+                    self._task("ResolutionAgent", 2, "汇总结论并给出处理建议", "根因与建议"),
                 ],
                 3: [],
             },
             "settlement_amount_mismatch": {
                 1: [
-                    self._task("get_merchant_contract", 1, "读取合同信息", "合同与分润比例"),
-                    self._task("get_bill_detail", 1, "读取账单信息", "账单金额"),
-                    self._task("get_settlement_rule", 1, "读取结算规则", "实际规则"),
-                    self._task("search_history_ticket", 1, "检索类似工单", "历史处理经验"),
+                    self._task("CodeAgent", 1, "读取合同、账单与结算规则", "结算基础事实"),
+                    self._task("OperationAgent", 1, "检索相似工单与操作侧线索", "历史处理经验"),
+                    self._task("DataAgent", 1, "预热账单与规则实体", "后续规则校验事实"),
                 ],
                 2: [
-                    self._task("settlement_contract_path", 1, "检查合同与商户标签", "合同和商户信息"),
-                    self._task("settlement_calculation_path", 1, "检查计算结果", "比例与金额一致性"),
-                    self._task("settlement_timeline_path", 1, "检查结算时间线", "标签变更和流程痕迹"),
+                    self._task("CodeAgent", 1, "检查规则与计算链路", "比例与金额一致性"),
+                    self._task("OperationAgent", 1, "排除人工流程异常", "历史与流程线索"),
+                    self._task("DataAgent", 1, "检查合同标签与数据时间线", "标签变更和规则痕迹"),
                 ],
                 3: [
-                    self._task("search_policy_faq", 1, "补充处理建议", "FAQ 处理建议"),
-                    self._task("search_history_ticket", 1, "复核历史案例", "相似工单结果"),
-                    self._task("root_cause_resolver", 2, "汇总结论并判责", "根因与建议"),
+                    self._task("CodeAgent", 1, "复核规则链路结论", "技术侧复核"),
+                    self._task("OperationAgent", 1, "复核流程与历史案例", "操作侧复核"),
+                    self._task("DataAgent", 1, "复核标签与比例冲突", "数据侧复核"),
+                    self._task("ResolutionAgent", 2, "汇总结论并判责", "根因与建议"),
                 ],
             },
         }

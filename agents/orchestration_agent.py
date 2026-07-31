@@ -398,6 +398,9 @@ class OrchestrationAgent(AgentBase):
                 "summary": data.get("summary", ""),
                 "duration_ms": data.get("duration_ms"),
                 "tools_called": data.get("tools_called", []),
+                "recommended_skills": data.get("recommended_skills", []),
+                "evidence": data.get("evidence", []),
+                "next_actions": data.get("next_actions", []),
             })
 
         # 检查是否有错误
@@ -419,86 +422,63 @@ class OrchestrationAgent(AgentBase):
         if not self.memory_manager:
             return
 
-        # 提取并保存信息到长期记忆
+        ticket_id = (
+            intention_data.get("ticket_id")
+            or intention_data.get("key_entities", {}).get("ticket_id")
+            or intention_data.get("ticket", {}).get("ticket_id", "")
+        )
+        merchant_id = (
+            intention_data.get("key_entities", {}).get("merchant_id")
+            or intention_data.get("ticket", {}).get("merchant_id", "")
+        )
+        issue_type = (
+            intention_data.get("issue_type")
+            or intention_data.get("key_entities", {}).get("issue_type", "")
+        )
+        scenario = intention_data.get("scenario", "")
+        query = intention_data.get("query", "")
+
+        agent_observations = []
+        resolution_data = None
+
         for result in results:
             agent_name = result["agent_name"]
-            data = result["result"].get("data", {})
+            data = result["result"].get("data", {}) or {}
+            if not isinstance(data, dict):
+                continue
 
-            # 如果是偏好智能体，保存偏好信息到长期记忆
-            if agent_name == "preference" and isinstance(data, dict):
-                preferences_data = data.get("preferences", {})
+            summary = data.get("summary")
+            if summary:
+                agent_observations.append(f"{agent_name}: {summary}")
 
-                # 新格式：preferences 是列表，包含 {type, value, action}
-                if isinstance(preferences_data, list):
-                    for pref_item in preferences_data:
-                        if not isinstance(pref_item, dict):
-                            continue
+            if agent_name == "ResolutionAgent":
+                resolution_data = data
 
-                        pref_type = pref_item.get("type")
-                        pref_value = pref_item.get("value")
-                        pref_action = pref_item.get("action", "replace")  # 默认覆盖
+        if resolution_data:
+            self.memory_manager.long_term.save_diagnosis_history({
+                "ticket_id": ticket_id,
+                "merchant_id": merchant_id,
+                "issue_type": issue_type,
+                "scenario": scenario,
+                "summary": resolution_data.get("summary", ""),
+                "responsible_party": resolution_data.get("responsible_party", ""),
+                "root_cause": resolution_data.get("root_cause", ""),
+                "query": query,
+                "status": "completed",
+                "agent_observations": agent_observations,
+                "evidence": resolution_data.get("evidence", []),
+            })
+            logger.info(
+                "Saved diagnosis memory for ticket %s with responsible party %s",
+                ticket_id or "unknown",
+                resolution_data.get("responsible_party", "unknown"),
+            )
+            return
 
-                        if not pref_type or not pref_value:
-                            continue
-
-                        # 根据 action 决定操作
-                        if pref_action == "append":
-                            # 追加模式：获取现有值并追加
-                            current_prefs = self.memory_manager.long_term.get_preference()
-                            existing_value = current_prefs.get(pref_type)
-
-                            # 如果现有值是列表，追加
-                            if isinstance(existing_value, list):
-                                if pref_value not in existing_value:
-                                    existing_value.append(pref_value)
-                                self.memory_manager.long_term.save_preference(pref_type, existing_value)
-                                logger.info(f"Appended to {pref_type}: {pref_value}, total: {existing_value}")
-                            else:
-                                # 如果现有值不是列表，创建新列表
-                                new_list = [existing_value, pref_value] if existing_value else [pref_value]
-                                self.memory_manager.long_term.save_preference(pref_type, new_list)
-                                logger.info(f"Created list for {pref_type}: {new_list}")
-                        else:
-                            # 覆盖模式：直接保存新值
-                            self.memory_manager.long_term.save_preference(pref_type, pref_value)
-                            logger.info(f"Replaced {pref_type}: {pref_value}")
-
-                # 旧格式兼容：preferences 是字典
-                elif isinstance(preferences_data, dict):
-                    for pref_type, value in preferences_data.items():
-                        if value and pref_type != "has_preferences" and pref_type != "error":
-                            self.memory_manager.long_term.save_preference(pref_type, value)
-                            logger.info(f"Updated {pref_type}: {value} (legacy format)")
-
-            # 如果是行程规划智能体，保存行程到长期记忆
-            if agent_name == "itinerary_planning" and isinstance(data, dict):
-                itinerary = data.get("itinerary", {})
-
-                # 只要有行程信息就保存（不管是否完全规划好）
-                if itinerary:
-                    # 提取事项收集的信息（出发地、目的地等）
-                    event_data = {}
-                    for r in results:
-                        if r["agent_name"] == "event_collection":
-                            event_data = r["result"].get("data", {})
-                            break
-
-                    # 从 event_data 获取行程信息
-                    origin = event_data.get("origin")
-                    destination = event_data.get("destination")
-                    start_date = event_data.get("start_date")
-                    end_date = event_data.get("end_date")
-                    purpose = event_data.get("trip_purpose", "旅游")
-
-                    # 保存到长期记忆（只要有目的地就保存）
-                    if destination:
-                        self.memory_manager.long_term.save_trip_history({
-                            "origin": origin,
-                            "destination": destination,
-                            "start_date": start_date,
-                            "end_date": end_date,
-                            "purpose": purpose
-                        })
-                        logger.info(f"Saved trip to long-term memory: {origin} -> {destination}")
-
-        logger.info("Memory updated after orchestration")
+        if agent_observations:
+            self.memory_manager.long_term.add_chat_message(
+                role="assistant",
+                content=" | ".join(agent_observations),
+                session_id=getattr(self.memory_manager, "session_id", None),
+            )
+            logger.info("Saved agent observations to long-term chat history")

@@ -110,46 +110,44 @@ async def test_memory_system():
         if value:
             print(f"  - {key}: {value}")
 
-    # ========== 测试长期记忆 - 行程历史 ==========
-    print_section("测试3: 长期记忆 - 行程历史（跨会话持久化）")
+    # ========== 测试长期记忆 - 诊断历史 ==========
+    print_section("测试3: 长期记忆 - 诊断历史（跨会话持久化）")
 
-    print("保存行程历史...")
-    memory_manager.long_term.save_trip_history({
-        "origin": "上海",
-        "destination": "北京",
-        "start_date": "2026-01-15",
-        "end_date": "2026-01-18",
-        "purpose": "旅游"
+    print("保存诊断记录...")
+    memory_manager.long_term.save_diagnosis_history({
+        "ticket_id": "TK001",
+        "issue_type": "退款回调超时",
+        "resolution": "确认回调地址配置错误",
+        "category": "支付异常"
     })
-    memory_manager.long_term.save_trip_history({
-        "origin": "上海",
-        "destination": "杭州",
-        "start_date": "2026-02-10",
-        "end_date": "2026-02-12",
-        "purpose": "出差"
+    memory_manager.long_term.save_diagnosis_history({
+        "ticket_id": "TK002",
+        "issue_type": "商户冻结",
+        "resolution": "风控规则误触发，已解冻",
+        "category": "商户管理"
     })
-    memory_manager.long_term.save_trip_history({
-        "origin": "上海",
-        "destination": "成都",
-        "start_date": "2026-03-05",
-        "end_date": "2026-03-09",
-        "purpose": "旅游"
+    memory_manager.long_term.save_diagnosis_history({
+        "ticket_id": "TK003",
+        "issue_type": "结算对账不平",
+        "resolution": "分润比例配置错误",
+        "category": "结算异常"
     })
-    print("✓ 已保存3条行程历史\n")
+    print("✓ 已保存3条诊断记录\n")
 
-    # 获取行程历史
-    print("📝 读取行程历史（最近5条）:")
-    trip_history = memory_manager.long_term.get_trip_history(limit=5)
-    for i, trip in enumerate(trip_history, 1):
-        print(f"  {i}. {trip['origin']} → {trip['destination']} "
-              f"({trip.get('start_date', '未知')} - {trip.get('end_date', '未知')}) "
-              f"- {trip.get('purpose', '未知')}")
+    # 获取诊断历史
+    print("📝 读取诊断历史（最近5条）:")
+    diagnosis_history = memory_manager.long_term.get_diagnosis_history(limit=5)
+    for i, record in enumerate(diagnosis_history, 1):
+        ticket_id = record.get("ticket_id", record.get("diagnosis_id", "未知"))
+        issue_type = record.get("issue_type", "未分类")
+        resolution = record.get("resolution", "")
+        print(f"  {i}. 工单#{ticket_id} [{issue_type}] - {resolution}")
 
-    # 获取高频目的地
-    print("\n📊 高频目的地（Top 3）:")
-    frequent_destinations = memory_manager.long_term.get_frequent_destinations(top_n=3)
-    for i, (dest, count) in enumerate(frequent_destinations, 1):
-        print(f"  {i}. {dest}: {count}次")
+    # 获取高频问题类型
+    print("\n📊 高频问题类型（Top 3）:")
+    common_issues = memory_manager.long_term.get_common_issue_types(top_n=3)
+    for i, (issue_type, count) in enumerate(common_issues, 1):
+        print(f"  {i}. {issue_type}: {count}次")
 
     # ========== 测试长期记忆 - 聊天历史 ==========
     print_section("测试4: 长期记忆 - 聊天历史（持久化的对话记录）")
@@ -190,14 +188,14 @@ async def test_memory_system():
 
     print("\n【长期记忆】")
     print(f"  - 偏好项数: {len([v for v in full_context['long_term']['preferences'].values() if v])}")
-    print(f"  - 行程历史数: {len(full_context['long_term']['trip_history'])}")
-    print(f"  - 高频目的地: {full_context['long_term']['frequent_destinations']}")
+    print(f"  - 诊断历史数: {len(full_context['long_term']['diagnosis_history'])}")
+    print(f"  - 高频问题类型: {full_context['long_term']['common_issue_types']}")
 
     # ========== 测试Agent上下文获取 ==========
     print_section("测试7: 获取Agent用的上下文字符串")
 
     # 模拟生成一个长期记忆总结
-    long_term_summary = "用户是一位经常出差和旅游的商务人士，喜欢经济型酒店，偏好高铁出行。最近去过北京、杭州、成都等地。"
+    long_term_summary = "运营人员经常处理支付异常和商户管理类工单，最近排查过退款回调超时、商户冻结、结算对账不平等问题。"
 
     print("📝 Agent上下文字符串:")
     agent_context = memory_manager.get_context_for_agent(long_term_summary)
@@ -215,12 +213,12 @@ async def test_memory_system():
     chat_count = len(memory_manager.long_term.get_chat_history(limit=999999))
     preferences = memory_manager.long_term.get_preference()
     pref_count = len([v for v in preferences.values() if v])
-    unique_destinations = len(stats.get('frequent_destinations', {}))
+    unique_issue_types = len(stats.get('common_issue_types', {}))
 
     print(f"  - 总聊天记录数: {chat_count}")
-    print(f"  - 总行程数: {stats.get('total_trips', 0)}")
+    print(f"  - 总诊断数: {stats.get('total_diagnoses', 0)}")
     print(f"  - 已设置的偏好数: {pref_count}")
-    print(f"  - 访问过的目的地数: {unique_destinations}")
+    print(f"  - 诊断过的问题类型数: {unique_issue_types}")
 
     # ========== 测试会话清除 ==========
     print_section("测试9: 清除短期记忆（结束会话）")
@@ -236,8 +234,8 @@ async def test_memory_system():
     print("\n📝 验证长期记忆仍然保留:")
     preferences = memory_manager.long_term.get_preference()
     print(f"  - 偏好项数: {len([v for v in preferences.values() if v])}")
-    trip_history = memory_manager.long_term.get_trip_history(limit=5)
-    print(f"  - 行程历史数: {len(trip_history)}")
+    diagnosis_history = memory_manager.long_term.get_diagnosis_history(limit=5)
+    print(f"  - 诊断历史数: {len(diagnosis_history)}")
 
     # ========== 测试跨会话持久化 ==========
     print_section("测试10: 跨会话持久化（新建会话，验证长期记忆保留）")
@@ -260,11 +258,13 @@ async def test_memory_system():
         if value:
             print(f"    - {key}: {value}")
 
-    # 验证行程历史
-    trip_history = new_memory_manager.long_term.get_trip_history(limit=5)
-    print(f"\n  行程历史数: {len(trip_history)}")
-    for i, trip in enumerate(trip_history, 1):
-        print(f"    {i}. {trip['origin']} → {trip['destination']} ({trip.get('start_date', '未知')})")
+    # 验证诊断历史
+    diagnosis_history = new_memory_manager.long_term.get_diagnosis_history(limit=5)
+    print(f"\n  诊断历史数: {len(diagnosis_history)}")
+    for i, record in enumerate(diagnosis_history, 1):
+        ticket_id = record.get("ticket_id", record.get("diagnosis_id", "未知"))
+        issue_type = record.get("issue_type", "未分类")
+        print(f"    {i}. 工单#{ticket_id} [{issue_type}]")
 
     print("\n✓ 跨会话持久化验证成功！")
 
@@ -274,7 +274,7 @@ async def test_memory_system():
     print("\n记忆系统功能总结:")
     print("  1. ✓ 短期记忆：会话级对话记录（会话结束后清空）")
     print("  2. ✓ 长期记忆-偏好：跨会话持久化用户偏好")
-    print("  3. ✓ 长期记忆-行程历史：跨会话持久化旅行记录")
+    print("  3. ✓ 长期记忆-诊断历史：跨会话持久化工单诊断记录")
     print("  4. ✓ 长期记忆-聊天历史：跨会话持久化对话记录")
     print("  5. ✓ LLM总结：自动总结长期记忆生成摘要")
     print("  6. ✓ 上下文聚合：整合短期+长期记忆供Agent使用")

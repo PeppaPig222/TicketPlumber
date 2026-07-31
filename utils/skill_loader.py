@@ -59,7 +59,7 @@ class SkillLoader:
         
         Args:
             skill_mapping: 可选，将 skill name 映射为系统内部的 intent name
-                          例如: {"plan-trip": "itinerary_planning"}
+                          例如: {"ask-question": "rag_knowledge"}
         """
         if not self.skills:
             self.load_skills()

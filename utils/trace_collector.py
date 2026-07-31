@@ -37,6 +37,8 @@ class TraceCollector:
         duration_ms: float,
         output_summary: str = "",
         tools_called: List[str] = None,
+        recommended_skills: List[str] = None,
+        evidence: List[str] = None,
     ):
         """记录单个 Agent 执行数据"""
         self._current_round.setdefault("agents", []).append({
@@ -46,6 +48,8 @@ class TraceCollector:
             "duration_ms": round(duration_ms, 1),
             "output_summary": output_summary[:200],
             "tools_called": tools_called or [],
+            "recommended_skills": recommended_skills or [],
+            "evidence": evidence or [],
         })
 
     def end_round(self, decision: str = ""):
@@ -87,6 +91,7 @@ def format_trace_sse(trace: Dict[str, Any]) -> list:
                     "status": agent["status"],
                     "duration_ms": agent["duration_ms"],
                     "tools": agent["tools_called"],
+                    "recommended_skills": agent.get("recommended_skills", []),
                 }
             })
         events.append({

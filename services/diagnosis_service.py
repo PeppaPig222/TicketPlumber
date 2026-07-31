@@ -10,9 +10,14 @@ from typing import Any, Dict, List, Optional
 
 from agentscope.message import Msg
 
-from agents.diagnosis_intention_agent import DiagnosisIntentionAgent
+from agents.intention_agent import IntentionAgent
+from agents.lazy_agent_registry import LazyAgentRegistry
 from agents.loop_decider import LoopDecider
 from agents.orchestration_agent import OrchestrationAgent
+from agents.code_agent import CodeAgent
+from agents.operation_agent import OperationAgent
+from agents.data_agent import DataAgent
+from agents.resolution_agent import ResolutionAgent
 from context.long_term_memory import LongTermMemory
 from skills.registry import SkillRegistry
 from utils.logging_config import set_trace_id
@@ -46,10 +51,23 @@ class DiagnosisService:
         storage_path: str = "data/memory",
     ):
         self.trace_repo = trace_repo or TraceRepository()
-        self.intention_agent = DiagnosisIntentionAgent()
+        self.skill_registry = SkillRegistry()
+        self._agent_cache: Dict[str, Any] = {}
+        self.agent_registry = LazyAgentRegistry(
+            model=None,
+            cache=self._agent_cache,
+            memory_manager=None,
+            custom_factories={
+                "CodeAgent": lambda: CodeAgent(name="CodeAgent", skill_registry=self.skill_registry),
+                "OperationAgent": lambda: OperationAgent(name="OperationAgent", skill_registry=self.skill_registry),
+                "DataAgent": lambda: DataAgent(name="DataAgent", skill_registry=self.skill_registry),
+                "ResolutionAgent": lambda: ResolutionAgent(name="ResolutionAgent", skill_registry=self.skill_registry),
+            },
+        )
+        self.intention_agent = IntentionAgent(name="IntentionAgent")
         self.orchestrator = OrchestrationAgent(
             name="DiagnosisOrchestrationAgent",
-            agent_registry=SkillRegistry(),
+            agent_registry=self.agent_registry,
             memory_manager=None,
         )
         self.loop_decider = LoopDecider(max_rounds=3)
@@ -132,7 +150,8 @@ class DiagnosisService:
         return {
             "trace_count": self.trace_repo.count(),
             "max_rounds": self.loop_decider.max_rounds,
-            "registered_skills": len(list(self.orchestrator.agent_registry.keys())),
+            "registered_agents": len(list(self.orchestrator.agent_registry.keys())),
+            "registered_skills": len(list(self.skill_registry.keys())),
             "total_diagnoses": stats.get("total_diagnoses", 0),
         }
 
@@ -154,6 +173,8 @@ class DiagnosisService:
                 duration_ms=result.get("duration_ms") or 0,
                 output_summary=result.get("summary", ""),
                 tools_called=result.get("tools_called", []),
+                recommended_skills=result.get("recommended_skills", []),
+                evidence=result.get("evidence", []),
             )
 
     def _merge_round_result(
@@ -173,7 +194,7 @@ class DiagnosisService:
         for result in round_result.get("results", []):
             data = result.get("data", {}) or {}
             for key, value in data.items():
-                if key in {"duration_ms", "tools_called", "summary"}:
+                if key in {"duration_ms", "tools_called", "summary", "status", "recommended_skills", "next_actions"}:
                     continue
                 facts[key] = value
 
@@ -225,19 +246,19 @@ class DiagnosisService:
             permissions = facts.get("asset_permission_detail", {})
             request = asset_pool.get("allocation_request", {})
             return {
-                "summary": "该工单不是单点故障，而是额度、保护期和权限三重限制叠加导致资产分配失败。",
-                "responsible_party": "业务配置与权限",
-                "root_cause": "可用额度仅 20 天，但申请 100 天；目标用户仍绑定其他商户且保护期有效；操作者也没有跨商户分配权限。",
-                "evidence": [
+                "summary": facts.get("summary", "该工单不是单点故障，而是额度、保护期和权限三重限制叠加导致资产分配失败。"),
+                "responsible_party": facts.get("responsible_party", "业务配置与权限"),
+                "root_cause": facts.get("root_cause", "可用额度仅 20 天，但申请 100 天；目标用户仍绑定其他商户且保护期有效；操作者也没有跨商户分配权限。"),
+                "evidence": facts.get("evidence", [
                     f"可用额度 {asset_pool.get('available_quota', 0)}，申请额度 {request.get('requested_quota', 0)}",
                     f"用户当前绑定商户 {binding.get('user_binding', {}).get('current_merchant_id', '未知')}",
                     f"跨商户分配权限 {'开启' if permissions.get('cross_merchant_allocate') else '关闭'}",
-                ],
-                "recommendations": [
+                ]),
+                "recommendations": facts.get("recommendations", [
                     "先回收或释放未使用额度，再发起分配",
                     "等待保护期结束或先处理用户解绑",
                     "如需跨商户操作，补齐权限后再执行",
-                ],
+                ]),
             }
 
         if scenario == "settlement_amount_mismatch":

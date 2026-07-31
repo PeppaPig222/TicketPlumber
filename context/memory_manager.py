@@ -78,9 +78,6 @@ class MemoryManager:
                 "chat_history": self.long_term.get_chat_history(10),
                 "diagnosis_history": self.long_term.get_diagnosis_history(5),
                 "common_issue_types": self.long_term.get_common_issue_types(3),
-                # 保留兼容字段，避免旧调用方直接读取时出错
-                "trip_history": self.long_term.get_diagnosis_history(5),
-                "frequent_destinations": self.long_term.get_common_issue_types(3),
                 "statistics": self.long_term.get_statistics()
             }
         }

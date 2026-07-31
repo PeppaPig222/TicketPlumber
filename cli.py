@@ -95,14 +95,17 @@ class DiagBotCLI:
             trace_table.add_column("轮次", style="cyan", width=6)
             trace_table.add_column("Agent", style="white", width=24)
             trace_table.add_column("状态", style="green", width=10)
+            trace_table.add_column("建议Skill", style="magenta", width=24)
             trace_table.add_column("摘要", style="white")
             for round_data in rounds:
                 round_num = str(round_data.get("round_num", ""))
                 for agent in round_data.get("agents", []):
+                    recommended_skills = ", ".join(agent.get("recommended_skills", [])[:3])
                     trace_table.add_row(
                         round_num,
                         agent.get("agent_name", ""),
                         agent.get("status", ""),
+                        recommended_skills,
                         agent.get("output_summary", ""),
                     )
                     round_num = ""

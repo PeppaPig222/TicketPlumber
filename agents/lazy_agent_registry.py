@@ -2,14 +2,13 @@
 # -*- coding: utf-8 -*-
 """
 懒加载智能体注册器
-基于 .claude/skills 目录结构的插件化加载机制
+基于 .claude/skills 目录结构的插件化加载机制，并支持显式注册的 Agent 工厂。
 """
-import os
 import sys
 import importlib.util
 import inspect
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Callable, Dict, Any, Optional
 from rich.console import Console
 from agentscope.agent import AgentBase
 
@@ -20,7 +19,7 @@ class LazyAgentRegistry:
     自动扫描 .claude/skills 下的技能目录，动态加载 script/agent.py
     """
 
-    def __init__(self, model, cache: Dict, memory_manager=None):
+    def __init__(self, model, cache: Dict, memory_manager=None, custom_factories: Optional[Dict[str, Callable[[], Any]]] = None):
         """
         初始化懒加载注册器
 
@@ -32,6 +31,7 @@ class LazyAgentRegistry:
         self.model = model
         self.cache = cache
         self.memory_manager = memory_manager
+        self.custom_factories = custom_factories or {}
         self.console = Console()
         
         # 技能目录路径
@@ -46,11 +46,9 @@ class LazyAgentRegistry:
         # 旧版兼容映射 (name -> skill_folder_name)
         self._legacy_mapping = {
             "rag_knowledge": "ask-question",
+            "knowledge_query": "ask-question",
             "memory_query": "memory-query",
-            "preference": "preference",
             "information_query": "query-info",
-            "itinerary_planning": "plan-trip",
-            "event_collection": "event-collection"
         }
 
     def _discover_skills(self):
@@ -75,6 +73,9 @@ class LazyAgentRegistry:
 
     def _resolve_agent_name(self, agent_name: str) -> Optional[str]:
         """解析智能体名称到技能目录名"""
+        if agent_name in self.custom_factories:
+            return agent_name
+
         # 1. 直接匹配技能名
         if agent_name in self._skill_map:
             return agent_name
@@ -95,6 +96,11 @@ class LazyAgentRegistry:
         skill_name = self._resolve_agent_name(agent_name)
         if not skill_name:
              raise KeyError(f"Agent '{agent_name}' not found in skills directory")
+
+        if agent_name in self.custom_factories:
+            agent_instance = self.custom_factories[agent_name]()
+            self.cache[agent_name] = agent_instance
+            return agent_instance
 
         script_path = self._skill_map[skill_name]
         
@@ -119,7 +125,7 @@ class LazyAgentRegistry:
             
             # 2. 查找 Agent 类
             agent_class = None
-            for name, obj in inspect.getmembers(module):
+            for _, obj in inspect.getmembers(module):
                 if inspect.isclass(obj) and issubclass(obj, AgentBase) and obj is not AgentBase:
                     agent_class = obj
                     break
@@ -165,6 +171,7 @@ class LazyAgentRegistry:
     def keys(self):
         # 返回所有可能的 key（包括 legacy mapping 的 key，为了兼容 orchestrator）
         keys = set(self._skill_map.keys())
+        keys.update(self.custom_factories.keys())
         for legacy_key, skill_val in self._legacy_mapping.items():
             if skill_val in self._skill_map:
                 keys.add(legacy_key)

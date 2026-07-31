@@ -6,9 +6,17 @@ DiagBot Ticket Diagnosis System - Agents Package
 from .intention_agent import IntentionAgent
 from .orchestration_agent import OrchestrationAgent
 from .lazy_agent_registry import LazyAgentRegistry
+from .code_agent import CodeAgent
+from .operation_agent import OperationAgent
+from .data_agent import DataAgent
+from .resolution_agent import ResolutionAgent
 
 __all__ = [
     'IntentionAgent',
     'OrchestrationAgent',
     'LazyAgentRegistry',
+    'CodeAgent',
+    'OperationAgent',
+    'DataAgent',
+    'ResolutionAgent',
 ]
