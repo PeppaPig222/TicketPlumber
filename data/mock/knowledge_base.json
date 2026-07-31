@@ -1,0 +1,45 @@
+[
+  {
+    "id": "HT-2037-ORDER-001",
+    "category": "history_ticket",
+    "merchant_id": "2037",
+    "keywords": ["订单状态异常", "待退款", "退款回调", "状态不一致"],
+    "summary": "近两个月命中过 3 笔相似工单，均表现为支付表已退款、订单表未同步。",
+    "resolution": "最终归属为数据侧后台脚本，需修复状态同步任务并补数据。",
+    "responsible_party": "数据侧（后台脚本）"
+  },
+  {
+    "id": "FAQ-ORDER-REFUND-001",
+    "category": "policy_faq",
+    "keywords": ["订单状态不一致", "退款回调", "脚本死锁", "状态同步失败"],
+    "summary": "退款回调脚本在高并发下可能出现死锁，导致订单状态未及时更新。",
+    "resolution": "建议补偿状态同步、增加重试和告警，并排查同批次受影响订单。",
+    "responsible_party": "数据侧（后台脚本）"
+  },
+  {
+    "id": "HT-10001-ASSET-001",
+    "category": "history_ticket",
+    "merchant_id": "10001",
+    "keywords": ["资产分配失败", "余额不足", "保护期", "跨商户绑定"],
+    "summary": "历史工单显示余额不足多由可用额度不足、用户仍在保护期、无跨商户权限共同触发。",
+    "resolution": "建议先回收未用额度，再等待保护期结束或申请跨商户权限。",
+    "responsible_party": "业务配置与权限"
+  },
+  {
+    "id": "HT-3052-SETTLEMENT-001",
+    "category": "history_ticket",
+    "merchant_id": "3052",
+    "keywords": ["结算金额不符", "联营", "直营", "标签刷写", "分润比例"],
+    "summary": "历史上曾出现批量脚本误刷商户结算标签，导致分润比例按直营规则结算。",
+    "resolution": "需要修正商户标签并补发或冲正差额，后续增加脚本变更审计。",
+    "responsible_party": "数据侧（标签脚本）"
+  },
+  {
+    "id": "FAQ-SETTLEMENT-001",
+    "category": "policy_faq",
+    "keywords": ["结算金额不符", "商户标签", "分润比例", "数据脚本"],
+    "summary": "当合同分润比例与结算规则不一致时，应优先检查商户标签和结算规则是否被脚本误更新。",
+    "resolution": "修正规则后重新出账，并对异常批次做全量复核。",
+    "responsible_party": "数据侧（标签脚本）"
+  }
+]

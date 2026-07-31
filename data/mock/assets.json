@@ -6,6 +6,46 @@
     "available_quota": 20,
     "quota_type": "免时长天数",
     "expiring_quota": 50,
-    "expire_date": "2026-09-01"
+    "expire_date": "2026-09-01",
+    "allocation_request": {
+      "requested_quota": 100,
+      "target_user_id": "U-7788",
+      "operator_id": "EMP-1001",
+      "result": "余额不足"
+    },
+    "allocation_records": [
+      {
+        "user_id": "U-1001",
+        "allocated_quota": 300,
+        "status": "生效中",
+        "allocated_at": "2026-07-20T10:00:00"
+      },
+      {
+        "user_id": "U-1002",
+        "allocated_quota": 180,
+        "status": "生效中",
+        "allocated_at": "2026-07-25T11:30:00"
+      }
+    ],
+    "user_binding": {
+      "user_id": "U-7788",
+      "current_merchant_id": "10002",
+      "binding_status": "active",
+      "binding_time": "2026-07-18T09:15:00",
+      "unbind_records": []
+    },
+    "protection_period": {
+      "user_id": "U-7788",
+      "merchant_id": "10002",
+      "status": "active",
+      "start_time": "2026-07-18T09:15:00",
+      "end_time": "2026-08-15T23:59:59"
+    },
+    "permissions": {
+      "operator_id": "EMP-1001",
+      "roles": ["station_manager"],
+      "points": ["asset_view"],
+      "cross_merchant_allocate": false
+    }
   }
 ]

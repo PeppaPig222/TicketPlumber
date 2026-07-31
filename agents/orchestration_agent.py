@@ -165,6 +165,21 @@ class OrchestrationAgent(AgentBase):
             "rewritten_query": intention_data.get("rewritten_query", "")
         }
 
+        # 透传诊断场景中额外的上下文字段，避免上层 Loop 状态在编排时丢失。
+        passthrough_fields = [
+            "intent",
+            "scenario",
+            "round_num",
+            "ticket",
+            "ticket_id",
+            "issue_type",
+            "query",
+            "collected_data",
+        ]
+        for field in passthrough_fields:
+            if field in intention_data:
+                context[field] = intention_data.get(field)
+
         # 从记忆系统获取上下文
         if self.memory_manager:
             # 短期记忆：最近对话
@@ -374,11 +389,15 @@ class OrchestrationAgent(AgentBase):
 
         # 收集每个智能体的结果
         for result in results:
+            data = result["result"].get("data", {}) or {}
             aggregated["results"].append({
                 "agent_name": result["agent_name"],
                 "priority": result["priority"],
                 "status": result["result"].get("status", "unknown"),
-                "data": result["result"].get("data", {})
+                "data": data,
+                "summary": data.get("summary", ""),
+                "duration_ms": data.get("duration_ms"),
+                "tools_called": data.get("tools_called", []),
             })
 
         # 检查是否有错误

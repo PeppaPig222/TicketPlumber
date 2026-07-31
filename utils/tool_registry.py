@@ -9,6 +9,7 @@ import json
 import logging
 from pathlib import Path
 from typing import Dict, Any, Callable, Coroutine
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -152,12 +153,52 @@ class ToolRegistry:
         return {"status": "not_found", "message": f"订单 {order_id} 无数据快照"}
 
     async def _handle_search_kb(self, query: str = None, **kwargs) -> Dict[str, Any]:
-        """RAG 知识库检索 — 委托给 RAGKnowledgeAgent"""
-        # 这里返回一个标记，实际 RAG 调用由 Skill Agent 自己完成
+        """基于 mock 数据的轻量知识库检索"""
+        entries = _load_json("knowledge_base.json") or []
+        merchant_id = kwargs.get("merchant_id")
+        query = query or ""
+
+        tokens = [
+            token.strip().lower()
+            for token in re.split(r"[\s,，。；;、]+", query)
+            if token.strip()
+        ]
+
+        matched = []
+        for entry in entries:
+            if merchant_id and entry.get("merchant_id") and entry.get("merchant_id") != merchant_id:
+                continue
+
+            haystacks = [
+                entry.get("summary", ""),
+                entry.get("resolution", ""),
+                " ".join(entry.get("keywords", [])),
+                entry.get("category", ""),
+            ]
+            searchable_text = " ".join(haystacks).lower()
+
+            score = 0
+            for token in tokens:
+                if token in searchable_text:
+                    score += 2
+            for keyword in entry.get("keywords", []):
+                if keyword.lower() in query.lower():
+                    score += 3
+
+            if score > 0:
+                matched.append({
+                    **entry,
+                    "score": score,
+                })
+
+        matched.sort(key=lambda item: item.get("score", 0), reverse=True)
+        top_matches = matched[:3]
+
         return {
-            "status": "delegated",
-            "message": "RAG 检索已委托给 ask-question Skill",
-            "query": query
+            "status": "success" if top_matches else "no_match",
+            "query": query,
+            "data": top_matches,
+            "message": "命中知识库结果" if top_matches else "未命中知识库"
         }
 
     # ───────────── 注册/执行接口 ─────────────
