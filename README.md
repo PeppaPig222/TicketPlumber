@@ -1,69 +1,170 @@
 # DiagBot 工单智能诊断助手
 
-基于 AgentScope 多智能体底座改造的 B 端商户工单智能诊断系统，面向“订单状态异常、资产分配失败、结算金额不符”等高频投诉场景，支持多轮 Loop、并行排查路径、根因归属判定和诊断 Trace 可视化。
+基于自研 Multi-Agent 编排底座的 B 端商户工单智能诊断系统。
 
-## 项目定位
+项目目标是把商户投诉场景里原本分散在前端、后端、数据侧的排查动作，收拢成一条可追踪、可回放、可扩展的多 Agent 诊断链路，帮助工单第一响应人更快完成信息收集、根因定位和责任归属判断。
 
-这个项目服务的是工单第一响应人。工单来了以后，不管接单的是前端、后端还是 on-call，同样都要先做三件事：
+## 项目特点
 
-- 查业务数据
-- 查接口与日志链路
-- 判断责任归属
-
-DiagBot 的目标不是替代人工修复，而是把原本散落在多个平台里的排查动作统一编排起来，先给出一份结构化诊断结论。
-
-## 当前能力
-
-- 支持 3 个高频场景闭环：
+- 主链路分层：
+  - `IntentionAgent`
+  - `OrchestrationAgent`
+  - `LazyAgentRegistry`
+  - `Memory`
+  - `Skill` 插件化
+- 面向工单诊断场景做了诊断域适配：
+  - `CodeAgent`
+  - `OperationAgent`
+  - `DataAgent`
+  - `ResolutionAgent`
+- 支持多轮 Loop：
+  - 信息收集
+  - 深度诊断
+  - 交叉验证与归属判定
+- 支持 CLI、FastAPI、Web Demo 三种入口
+- 支持 trace 查询与 SSE 回放
+- 当前已跑通 3 个高频场景：
   - 订单状态异常
   - 资产分配失败
   - 结算金额不符
-- 支持 3 轮 Agentic Loop：
-  - Round 1 信息收集
-  - Round 2 多路径并行诊断
-  - Round 3 交叉验证与归属判定
-- 支持 Trace 面板：
-  - 查看每轮调用了哪些 Agent
-  - 查看每个 Agent 的摘要、状态和耗时
-- 支持 Web API 与 CLI 两种入口
-- 支持基于 mock 数据的端到端演示
 
-## 核心架构
+## 项目定位
+
+DiagBot 服务的是工单第一响应人。
+
+在真实业务里，商户投诉工单进来后，接单的人不一定是固定角色，可能是前端，也可能是后端或 on-call。同一个人往往要做三件事：
+
+1. 查业务数据
+2. 查接口与日志链路
+3. 判断责任归属
+
+DiagBot 不直接替代人工修复，而是先把排查过程中的信息收集、证据整理和初步归因自动化，让第一响应人少开几个系统、少反复切换上下文。
+
+## 与 Aligo 原工程的关系
+
+这个项目不是“只换业务文案”的轻量改名版本，也不是完全推翻原有底座重做。
+
+更准确的描述是：
+
+- **复用的部分**
+  - `IntentionAgent -> OrchestrationAgent -> LazyAgentRegistry` 的主链路分层
+  - priority 并行调度
+  - 长短期记忆机制
+  - 重试、熔断、结构化输出兜底
+  - trace 与日志能力
+- **诊断域适配的部分**
+  - 诊断主入口
+  - 专业诊断 Agent
+  - 领域记忆内容
+  - 诊断 Skill 与 Tool 数据源
+  - CLI / API / Web 的产品形态
+
+所以它更像是：**复用 Aligo 的通用多 Agent 骨架，迁移到工单诊断场景。**
+
+## 架构总览
 
 ```text
-用户输入 / 工单ID
-    ↓
-DiagnosisService
-    ↓
-DiagnosisIntentionAgent
-    ↓
+User / CLI / Web / API
+        |
+        v
+IntentionAgent
+        |
+        v
 OrchestrationAgent
-    ↓
-SkillRegistry / Diagnosis Agents
-    ↓
-ToolRegistry + Mock Data
-    ↓
-LoopDecider
-    ↓
-TraceCollector / 诊断结论
+        |
+        v
+LazyAgentRegistry
+        |
+        +-------------------+-------------------+-------------------+
+        |                   |                   |                   |
+        v                   v                   v                   v
+   CodeAgent         OperationAgent         DataAgent       ResolutionAgent
+        |                   |                   |                   |
+        +-------------------+-------------------+-------------------+
+                            |
+                            v
+                       SkillRegistry
+                            |
+                            v
+                        ToolRegistry
+                            |
+                            v
+               Mock Data / Logs / KB / Snapshots
 ```
 
-### 主要模块
+当前代码里仍然保留了 `DiagnosisService` 作为 facade，用来串联 API、trace、history 和多轮执行；后续目标是继续把主链路收回到更接近 Aligo 风格的 Agent 调度模式。
 
-- `services/diagnosis_service.py`
-  诊断主入口，串联多轮 Loop、Trace 和历史记录
-- `agents/diagnosis_intention_agent.py`
-  诊断场景下的意图识别与分轮调度
-- `agents/diagnosis_agents.py`
-  原子 Skill Agent 与三类诊断路径实现
-- `skills/registry.py`
-  诊断 Skill 注册中心
-- `utils/tool_registry.py`
-  诊断工具层，负责读取 mock 数据和知识库
+## 核心主链路
+
+当前主入口已经能够完成一条完整的诊断闭环：
+
+```text
+CLI / HTTP Request
+  -> DiagnosisService
+  -> DiagnosisIntentionAgent
+  -> OrchestrationAgent
+  -> SkillRegistry / Diagnosis Agents
+  -> LoopDecider
+  -> TraceCollector
+  -> Diagnosis Result
+```
+
+目标形态则是进一步回收为：
+
+```text
+CLI / HTTP Request
+  -> IntentionAgent
+  -> OrchestrationAgent
+  -> LazyAgentRegistry
+  -> CodeAgent / OperationAgent / DataAgent / ResolutionAgent
+  -> SkillRegistry
+  -> ToolRegistry
+  -> Trace + Result
+```
+
+## 核心模块
+
+### 入口与服务层
+
+- `cli.py`
+  - 命令行交互入口
+  - 展示诊断结果、历史记录、trace 摘要
 - `api/app.py`
-  FastAPI 入口，提供诊断、trace 查询和 SSE 回放
-- `web/index.html`
-  最小诊断面板
+  - FastAPI 入口
+  - 提供诊断、trace 查询和 SSE 回放接口
+- `services/diagnosis_service.py`
+  - 当前诊断 facade
+  - 串联 Intention、Orchestration、Loop、Trace 和历史记录
+
+### Agent 层
+
+- `agents/diagnosis_intention_agent.py`
+  - 工单诊断场景下的意图识别与调度建议
+- `agents/intention_agent.py`
+  - 兼容旧调用点的诊断意图入口
+- `agents/orchestration_agent.py`
+  - 轮内 priority 并行调度与结果聚合
+- `agents/diagnosis_agents.py`
+  - 当前诊断路径执行实现
+- `agents/loop_decider.py`
+  - 轮间决策：`done / cross_verify / need_info`
+
+### Skill 与 Tool 层
+
+- `skills/registry.py`
+  - Skill 注册中心
+- `utils/tool_registry.py`
+  - 数据查询、日志追踪、知识库检索等工具统一封装
+
+### 记忆与观测
+
+- `context/`
+  - 短期与长期记忆
+  - 机制上仍然是长短期记忆，只是内容改成了诊断域
+- `utils/trace_collector.py`
+  - 收集每轮 Agent / Skill 的执行摘要、状态、耗时
+- `utils/logging_config.py`
+  - 结构化日志与 `trace_id`
 
 ## 支持场景
 
@@ -75,11 +176,12 @@ TraceCollector / 诊断结论
 请诊断工单 WO-20260815-0421
 ```
 
-默认流程：
+典型排查点：
 
-- Round 1：读取工单、订单、商户、历史案例
-- Round 2：并行排查代码链路、用户操作、数据一致性
-- Round 3：结合 FAQ 与历史案例做交叉验证
+- 订单状态与支付状态是否一致
+- 回调链路是否成功
+- 订单表、支付表、结算表是否存在状态冲突
+- 是否命中历史相似工单
 
 ### 2. 资产分配失败
 
@@ -89,6 +191,13 @@ TraceCollector / 诊断结论
 帮我看下工单 WO-20260816-0532 为什么资产分配失败
 ```
 
+典型排查点：
+
+- 商户资产池额度
+- 用户绑定关系
+- 保护期限制
+- 权限或跨商户分配限制
+
 ### 3. 结算金额不符
 
 示例输入：
@@ -97,7 +206,14 @@ TraceCollector / 诊断结论
 请排查工单 WO-20260817-0611 的结算金额不符问题
 ```
 
-## 快速开始
+典型排查点：
+
+- 合同分润比例
+- 账单明细与结算规则
+- 计算过程与标签配置
+- 历史同类结算异常案例
+
+## 运行方式
 
 ### 1. 安装依赖
 
@@ -111,7 +227,7 @@ pip install -r requirements.txt
 uvicorn api.app:app --reload
 ```
 
-打开浏览器访问：
+打开：
 
 ```text
 http://127.0.0.1:8000/
@@ -123,15 +239,15 @@ http://127.0.0.1:8000/
 python cli.py
 ```
 
-CLI 示例：
+可直接输入：
 
 ```text
 请诊断工单 WO-20260815-0421
-工单 WO-20260817-0611 结算金额不符
 商户2037反馈订单ORD-8823状态异常
+工单 WO-20260817-0611 结算金额不符
 ```
 
-### 4. 直接调用 API
+### 4. 调用 API
 
 ```bash
 curl -X POST "http://127.0.0.1:8000/api/v1/diagnose" \
@@ -153,15 +269,21 @@ curl "http://127.0.0.1:8000/api/v1/trace/stream/<trace_id>"
 
 ## 测试
 
-当前最重要的诊断链路测试：
+当前建议优先跑这些回归测试：
 
 ```bash
-pytest tests/test_diagnosis_service.py tests/test_diagnosis_api.py
+pytest tests/test_diagnosis_service.py tests/test_diagnosis_api.py tests/test_intention_agent_compat.py
 ```
 
-## Mock 数据
+如果在做 CLI / Agent 主链路回收，也建议补跑：
 
-诊断演示依赖以下 mock 数据：
+```bash
+pytest tests/test_intention_agent.py tests/test_cli_qa.py
+```
+
+## Mock 数据与演示数据
+
+当前演示链路依赖以下 mock 数据：
 
 - `data/mock/tickets.json`
 - `data/mock/orders.json`
@@ -172,16 +294,40 @@ pytest tests/test_diagnosis_service.py tests/test_diagnosis_api.py
 - `data/mock/db_snapshots.json`
 - `data/mock/knowledge_base.json`
 
-## 当前边界
+## 当前状态
 
-当前版本已经完成诊断主链路，但仍有一些底座模块保留了兼容实现，例如部分旧测试和旧插件式旅行 Skill 结构。这些兼容层不会影响工单诊断主入口：
+当前项目已经完成：
 
-- Web：`api/app.py`
-- CLI：`cli.py`
-- 服务层：`services/diagnosis_service.py`
+- 诊断主链路可跑
+- CLI / API / Web demo 可用
+- 3 个高频场景闭环
+- trace 查询与 SSE 回放
 
-## 技术方案
+当前还在继续收口的方向：
 
-详细改造方案见：
+- 回归更像 Aligo 的多 Agent 主链路
+- 把专业 Agent 真正接回 `LazyAgentRegistry`
+- 把 workflow runner 进一步改成 agent-driven 调度
+- 补齐 30 个原子 Skill
+- 补齐 React + TypeScript 版前端诊断面板
 
-[docs/小哈工单智能诊断助手.md](file:///Users/yuchen/Learning-library/demo/小哈工单智能诊断助手agent/docs/小哈工单智能诊断助手.md)
+详细计划见：
+
+- [docs/改造TODO.md](file:///Users/yuchen/Learning-library/demo/小哈工单智能诊断助手agent/docs/改造TODO.md)
+- [docs/小哈工单智能诊断助手.md](file:///Users/yuchen/Learning-library/demo/小哈工单智能诊断助手agent/docs/小哈工单智能诊断助手.md)
+
+## 目录参考
+
+```text
+.
+├── agents/          # Intention / Orchestration / Loop / Diagnosis Agents
+├── api/             # FastAPI 入口
+├── context/         # 长短期记忆
+├── data/mock/       # 演示用 mock 数据
+├── docs/            # 技术方案、设计原则、TODO
+├── services/        # 诊断 facade
+├── skills/          # Skill 注册与后续插件化扩展
+├── tests/           # 诊断链路测试
+├── utils/           # tool registry / trace / logging 等基础设施
+└── web/             # 最小可用前端 demo
+```

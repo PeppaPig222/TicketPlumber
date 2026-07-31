@@ -42,34 +42,103 @@
 ## Batch 1：回归多 Agent 主架构
 
 > 目标：保留当前高准确度诊断链路，但把运行主路径收回到更像 Aligo 的多 Agent 玩法。
+>
+> 这一批的核心不是继续堆 Skill，而是先把主链路改回：
+> `CLI / API -> IntentionAgent -> OrchestrationAgent -> LazyAgentRegistry -> 专业 Agent -> Skill`
+>
+> 目标状态：
+> - 入口上看起来仍然是 Aligo 风格的通用多 Agent 系统
+> - 运行时仍然保留工单诊断需要的受控执行与高准确度
+> - `DiagnosisService` 退居 facade，不再承载主要诊断编排逻辑
 
 ### 1.1 专业 Agent 角色化
 
-- [ ] 新增 `CodeAgent`
-- [ ] 新增 `OperationAgent`
-- [ ] 新增 `DataAgent`
-- [ ] 新增 `ResolutionAgent`
-- [ ] 明确每个 Agent 的职责边界、输入输出和可调用 Skill
+- [ ] 新增 `agents/code_agent.py`
+- [ ] 新增 `agents/operation_agent.py`
+- [ ] 新增 `agents/data_agent.py`
+- [ ] 新增 `agents/resolution_agent.py`
+- [ ] 为每个 Agent 定义统一结构化输出：
+  - [ ] `summary`
+  - [ ] `status`
+  - [ ] `evidence`
+  - [ ] `next_actions`
+  - [ ] `recommended_skills`
+- [ ] 为每个 Agent 定义职责边界
+  - [ ] `CodeAgent`：接口链路、配置、回调、前后端状态
+  - [ ] `OperationAgent`：用户操作、流程规范、历史工单操作侧经验
+  - [ ] `DataAgent`：跨表一致性、状态冲突、数据脏写
+  - [ ] `ResolutionAgent`：证据汇总、冲突消解、责任归属、处理建议
+- [ ] 为每个 Agent 定义可调用 Skill 白名单，避免跨域自由发散
 
 ### 1.2 编排层回归 Aligo 风格
 
-- [ ] 让 `OrchestrationAgent` 真正调度专业 Agent，而不是主要调度 runner
+- [ ] 调整 `agents/orchestration_agent.py`
+  - [ ] 支持按 agent name 调度，而不是主要按 runner/skill 调度
+  - [ ] 支持 priority 分组并行调度专业 Agent
+  - [ ] 支持 round 内 agent 结果聚合
 - [ ] 让 `LazyAgentRegistry` 成为诊断主链路的一部分
-- [ ] 明确 Agent 与 Skill 的两层分工
-- [ ] 让 CLI / API / Web 都展示“Agent 协作”而不是“直接跑 Skill”
+  - [ ] 注册 `CodeAgent / OperationAgent / DataAgent / ResolutionAgent`
+  - [ ] 保留后续新增 Agent 的懒加载能力
+- [ ] 明确两层分工
+  - [ ] Agent 决定看哪个视角、下一步查什么
+  - [ ] Skill 负责查单一数据源并返回结构化结果
+- [ ] 让 CLI / API / Web 展示“Agent 协作”
+  - [ ] CLI trace 中显示专业 Agent 名称
+  - [ ] API trace 中保留 agent-level 输出
+  - [ ] Web 面板展示 Agent 协作链，而不只是 Skill 列表
 
 ### 1.3 LLM 驱动能力回补
 
+- [ ] 为 `DiagnosisIntentionAgent` 回补更强的 LLM 输出字段
+  - [ ] `reasoning`
+  - [ ] `intents`
+  - [ ] `key_entities`
+  - [ ] `rewritten_query`
+  - [ ] `agent_schedule`
 - [ ] 为专业 Agent 补 prompt 与结构化输出协议
 - [ ] 让 Agent 在职责边界内做受控 tool selection
-- [ ] 保留 fallback 规则，避免诊断完全依赖自由式推理
-- [ ] 为 ResolutionAgent 增加证据汇总与归因 prompt
+  - [ ] 根据场景动态推荐 Skill
+  - [ ] 根据上轮证据决定是否补查
+  - [ ] 保证不会无限扩散调用
+- [ ] 保留 fallback 规则
+  - [ ] LLM 输出异常时回退到规则调度
+  - [ ] 关键实体缺失时走 `need_info`
+  - [ ] 单 Agent 失败不阻断整体链路
+- [ ] 为 `ResolutionAgent` 增加证据汇总与归因 prompt
 
 ### 1.4 回归检查
 
 - [ ] 更新技术方案中的架构图、组件表、时序图与面试话术
+- [ ] 更新 README，体现 Aligo 风格的主链路与当前实现状态
 - [ ] 补专业 Agent 级测试
+  - [ ] `tests/test_code_agent.py`
+  - [ ] `tests/test_operation_agent.py`
+  - [ ] `tests/test_data_agent.py`
+  - [ ] `tests/test_resolution_agent.py`
+- [ ] 补主链路回归测试
+  - [ ] `tests/test_orchestration_agent.py`
+  - [ ] `tests/test_cli_qa.py`
 - [ ] 验证 3 个高频场景闭环不回退
+
+### 1.5 涉及文件
+
+- [ ] `cli.py`
+- [ ] `services/diagnosis_service.py`
+- [ ] `agents/intention_agent.py`
+- [ ] `agents/diagnosis_intention_agent.py`
+- [ ] `agents/orchestration_agent.py`
+- [ ] `agents/diagnosis_agents.py`
+- [ ] `skills/registry.py`
+- [ ] `utils/trace_collector.py`
+- [ ] `README.md`
+
+### 1.6 验收标准
+
+- [ ] 从入口调用看，主链路已经回到 `IntentionAgent -> OrchestrationAgent -> Agent Registry -> 专业 Agent`
+- [ ] `DiagnosisService` 仅负责 facade、trace、history 和 API 适配
+- [ ] Trace 中可以清晰看到 `CodeAgent / OperationAgent / DataAgent / ResolutionAgent`
+- [ ] LLM 输出异常时仍能稳定回退
+- [ ] 3 个高频诊断场景结果不弱于当前版本
 
 ---
 
