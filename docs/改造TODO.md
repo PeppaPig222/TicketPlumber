@@ -1,0 +1,282 @@
+# 小哈工单智能诊断助手 改造 TODO
+
+> 基于 `docs/小哈工单智能诊断助手.md` 与当前代码现状整理。  
+> 目标：按批次逐步把项目从“核心诊断闭环可跑”补到“技术方案完整版”，并尽量回归 Aligo 原本的
+> 通用多 Agent / LLM 驱动 / Skill 插件化 / 面向开放式任务 的架构风格。
+
+## 当前状态
+
+### 已完成
+
+- [x] 工单诊断主入口：`DiagnosisService`
+- [x] 诊断意图识别：`DiagnosisIntentionAgent`
+- [x] 多轮 Loop：`LoopDecider`
+- [x] 3 个高频场景闭环：
+  - [x] 订单状态异常
+  - [x] 资产分配失败
+  - [x] 结算金额不符
+- [x] FastAPI 诊断接口、trace 查询、SSE 接口
+- [x] 最小可用 Web demo 页
+- [x] CLI 已切换为工单诊断助手
+- [x] README / 项目命名已统一为 DiagBot / 工单智能诊断助手
+- [x] 旧 `IntentionAgent` 已兼容到诊断语义
+- [x] 技术方案文档已收口为“受控多 Agent”叙事
+- [x] 基础回归测试：
+  - [x] `tests/test_diagnosis_service.py`
+  - [x] `tests/test_diagnosis_api.py`
+  - [x] `tests/test_intention_agent_compat.py`
+
+### 当前还未补全
+
+- [ ] 30 个原子 Skill 全量落地
+- [ ] 多 Agent 角色层真正落地，而不是以 workflow runner 为主
+- [ ] 回到 LazyAgentRegistry + Skill 插件化的主链路
+- [ ] 完整调度策略矩阵与降级策略
+- [ ] React + TypeScript + SSE 实时诊断追踪面板
+- [ ] 正式 RAG 知识库，而不是 mock keyword 检索
+- [ ] 工程化完整版：`pydantic-settings` / Docker / 全局结构化日志接线
+- [ ] 离线评测体系与评测数据集
+
+---
+
+## Batch 1：回归多 Agent 主架构
+
+> 目标：保留当前高准确度诊断链路，但把运行主路径收回到更像 Aligo 的多 Agent 玩法。
+
+### 1.1 专业 Agent 角色化
+
+- [ ] 新增 `CodeAgent`
+- [ ] 新增 `OperationAgent`
+- [ ] 新增 `DataAgent`
+- [ ] 新增 `ResolutionAgent`
+- [ ] 明确每个 Agent 的职责边界、输入输出和可调用 Skill
+
+### 1.2 编排层回归 Aligo 风格
+
+- [ ] 让 `OrchestrationAgent` 真正调度专业 Agent，而不是主要调度 runner
+- [ ] 让 `LazyAgentRegistry` 成为诊断主链路的一部分
+- [ ] 明确 Agent 与 Skill 的两层分工
+- [ ] 让 CLI / API / Web 都展示“Agent 协作”而不是“直接跑 Skill”
+
+### 1.3 LLM 驱动能力回补
+
+- [ ] 为专业 Agent 补 prompt 与结构化输出协议
+- [ ] 让 Agent 在职责边界内做受控 tool selection
+- [ ] 保留 fallback 规则，避免诊断完全依赖自由式推理
+- [ ] 为 ResolutionAgent 增加证据汇总与归因 prompt
+
+### 1.4 回归检查
+
+- [ ] 更新技术方案中的架构图、组件表、时序图与面试话术
+- [ ] 补专业 Agent 级测试
+- [ ] 验证 3 个高频场景闭环不回退
+
+---
+
+## Batch 2：补齐核心 Skill
+
+> 目标：先把“文档里的 30 个原子 Skill”补成完整结构，即使底层仍然先用 mock 数据也可以。
+
+### 2.1 商户管理域
+
+- [ ] `GetMerchantCoopStatus`
+- [ ] `GetMerchantContract`
+- [ ] `GetMerchantOrgTree`
+- [ ] `GetMerchantPermission`
+- [ ] `GetMerchantOnboarding`
+- [ ] `GetMerchantBlacklist`
+
+### 2.2 商家经营域
+
+- [ ] `GetOrderRefund`
+- [ ] `GetAssetRecycle`
+- [ ] `GetProtectionPeriod`
+- [ ] `GetBillingConfig`
+- [ ] `GetProductCatalog`
+
+### 2.3 资金结算域
+
+- [ ] `GetBillCalculation`
+- [ ] `GetSettlementStatus`
+- [ ] `GetSettlementTimeline`
+- [ ] `GetReconciliation`
+- [ ] `GetInvoiceStatus`
+- [ ] `GetPaymentChannel`
+
+### 2.4 通用辅助 Skill
+
+- [ ] `ValidateFrontendState`
+- [ ] `ReconstructTimeline`
+- [ ] 将 `SearchHistoryTicket`、`SearchPolicyFAQ` 从轻量 mock 进一步抽象成独立 Skill
+
+### 2.5 配套工作
+
+- [ ] 为新增 Skill 补对应 mock 数据文件
+- [ ] 为 `skills/registry.py` 和 `agents/diagnosis_agents.py` 补注册与测试
+- [ ] 更新 README 中“当前能力”与“支持场景”
+
+---
+
+## Batch 3：补齐调度策略与降级机制
+
+> 目标：把当前“能跑”升级成“更像技术方案里的调度系统”。
+
+### 3.1 调度策略矩阵
+
+- [ ] 抽离基础信息查询的统一并行策略
+- [ ] 抽离深度日志追踪的条件触发策略
+- [ ] 抽离跨域交叉验证的依赖调度策略
+- [ ] 抽离 RAG 与业务 Skill 并行执行策略
+- [ ] 给不同策略补统一配置入口
+
+### 3.2 降级策略
+
+- [ ] 单 Skill 超时后返回部分结果并标记超时
+- [ ] 单 Skill 失败后不中断整体诊断
+- [ ] `search_kb` 不可用时自动降级为纯业务 Skill
+- [ ] 日志类工具不可用时自动降级为数据库/快照查询
+- [ ] 在 trace 中展示“降级发生”的节点
+
+### 3.3 统一错误与状态
+
+- [ ] 在服务层真正接入 `ErrorCode` / `AppError`
+- [ ] 为 API 响应补统一错误结构
+- [ ] 为工具执行结果补统一状态枚举
+
+---
+
+## Batch 4：补齐前端诊断追踪面板
+
+> 目标：把现在的静态 demo 页补成文档里的“前端优势项”。
+
+### 4.1 前端工程初始化
+
+- [ ] 新建 React + TypeScript 前端工程
+- [ ] 接入诊断 API
+- [ ] 接入 trace SSE
+
+### 4.2 面板功能
+
+- [ ] 输入区：工单 ID / 商户 / 问题描述
+- [ ] 左侧 Agent 思考链
+- [ ] Round 维度展示
+- [ ] 多 Agent 并行展示
+- [ ] Agent 耗时、状态、工具调用展示
+- [ ] 右侧诊断结论卡片
+- [ ] 归属方判定矩阵
+
+### 4.3 可视化增强
+
+- [ ] 红/黄/绿三条路径的视觉区分
+- [ ] 诊断总耗时展示
+- [ ] 交叉验证阶段单独高亮
+- [ ] 降级/异常状态可视化
+
+---
+
+## Batch 5：补齐 RAG 知识库
+
+> 目标：把当前 `knowledge_base.json` 的 mock 检索升级成正式知识库方案。
+
+### 5.1 知识库数据
+
+- [ ] 新建 `data/knowledge/diagnosis_manual.txt`
+- [ ] 补历史工单经验文档
+- [ ] 补 FAQ / 政策 / 处理指引文档
+
+### 5.2 检索链路
+
+- [ ] 将 `search_kb` 从关键词匹配改为正式检索模块
+- [ ] 区分 `SearchHistoryTicket` 与 `SearchPolicyFAQ`
+- [ ] 支持返回来源、命中片段、置信度
+
+### 5.3 测试
+
+- [ ] 补 RAG 检索命中测试
+- [ ] 补“知识库不可用时的降级测试”
+
+---
+
+## Batch 6：补齐工程化
+
+> 目标：把方案里的工程化项真正接上线。
+
+### 6.1 配置管理
+
+- [ ] 用 `pydantic-settings` 重构 `config.py`
+- [ ] 支持 `.env` / 环境变量加载
+- [ ] 区分开发、测试、演示环境
+
+### 6.2 日志体系
+
+- [ ] 全局启用 `setup_logging`
+- [ ] API / Service / Tool / Agent 全链路带 `trace_id`
+- [ ] 关键节点输出结构化日志
+
+### 6.3 容器化
+
+- [ ] 增加 `Dockerfile`
+- [ ] 增加 `docker-compose.yml`
+- [ ] 补 README 中容器启动方式
+
+### 6.4 健康与监控
+
+- [ ] 丰富 `/health`
+- [ ] 丰富 `/metrics`
+- [ ] 补启动自检或依赖检查
+
+---
+
+## Batch 7：补齐评测体系
+
+> 目标：把“面试价值”最强的评测链路建起来。
+
+### 7.1 评测数据
+
+- [ ] 建立评测数据目录
+- [ ] 落 44 条核心评测数据：
+  - [ ] 20 条意图识别
+  - [ ] 12 条根因判断
+  - [ ] 12 条责任归属
+- [ ] 后续扩展到 1000 条评测框架
+
+### 7.2 Runner
+
+- [ ] 编写批量执行 runner
+- [ ] 输出 JSON/Markdown 报告
+- [ ] 统计失败 case
+
+### 7.3 指标
+
+- [ ] 意图准确率
+- [ ] 实体召回率
+- [ ] RAG 命中率
+- [ ] 闭环成功率
+- [ ] 归属准确率
+- [ ] MRR 或 Top-K 命中指标
+
+---
+
+## 建议补全顺序
+
+> 如果按“投入产出比”来排，建议这样补：
+
+1. [ ] Batch 1：回归多 Agent 主架构
+2. [ ] Batch 2：核心 Skill
+3. [ ] Batch 4：前端面板
+4. [ ] Batch 6：工程化
+5. [ ] Batch 5：正式 RAG
+6. [ ] Batch 3：调度/降级细化
+7. [ ] Batch 7：评测体系
+
+---
+
+## 每批完成后的回归检查
+
+- [ ] `pytest tests/test_diagnosis_service.py tests/test_diagnosis_api.py tests/test_intention_agent_compat.py`
+- [ ] `pytest tests/test_intention_agent.py`
+- [ ] 手动跑一遍 `python cli.py`
+- [ ] 手动跑一遍 `uvicorn api.app:app --reload`
+- [ ] 浏览器验证诊断流程
+- [ ] 检查 CLI / Web 是否体现 Agent 协作过程
+- [ ] 更新 README 与本 TODO 勾选状态
