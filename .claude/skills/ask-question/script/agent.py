@@ -110,7 +110,7 @@ class RAGKnowledgeAgent(AgentBase):
         milvus_db_path = str(self.knowledge_base_path / "milvus_lite.db")
         logger.info(f"Initializing Milvus Lite at: {milvus_db_path}")
 
-        self.milvus_client = MilvusClient(milvus_db_path, grpc_options={"keepalive_time": _GRPC_MAX_MS, "keepalive_timeout": "20000", "keepalive_permit_without_calls": "0", "http2_min_recv_ping_interval_without_data": _GRPC_MAX_MS, "http2_min_ping_interval_without_data": _GRPC_MAX_MS})
+        self.milvus_client = MilvusClient(uri=f"file:{milvus_db_path}")
         self._client_created_at = None  # 用于追踪客户端创建时间
 
         # 检查collection是否存在
