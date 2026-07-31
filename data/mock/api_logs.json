@@ -1,0 +1,22 @@
+[
+  {
+    "api_path": "/api/refund/callback",
+    "order_id": "ORD-8823",
+    "status_code": 200,
+    "response_time_ms": 230,
+    "error_code": null,
+    "response_body": {"code": 0, "message": "success"},
+    "called_at": "2026-08-13T14:32:18",
+    "note": "回调返回200，但订单状态更新处理超时"
+  },
+  {
+    "api_path": "/api/refund/callback",
+    "order_id": "ORD-8823",
+    "status_code": 505,
+    "response_time_ms": 5000,
+    "error_code": "PAY_005",
+    "response_body": {"code": 505, "message": "timeout"},
+    "called_at": "2026-08-13T14:32:23",
+    "note": "支付回调超时，订单状态同步失败"
+  }
+]

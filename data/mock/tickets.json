@@ -1,0 +1,41 @@
+[
+  {
+    "ticket_id": "WO-20260815-0421",
+    "merchant_id": "2037",
+    "merchant_name": "武汉骑手之家旗舰店",
+    "issue_type": "订单状态异常",
+    "order_id": "ORD-8823",
+    "description": "用户已支付198元，但页面显示待退款，已超过2天未到账",
+    "priority": "high",
+    "reporter": "商户本人",
+    "attachments": ["screenshot_refund_page.png"],
+    "created_at": "2026-08-15T09:00:00",
+    "status": "open"
+  },
+  {
+    "ticket_id": "WO-20260816-0532",
+    "merchant_id": "10001",
+    "merchant_name": "北京朝阳换电站",
+    "issue_type": "资产分配失败",
+    "description": "有500天免时长，但给员工分配100天时提示余额不足",
+    "order_id": null,
+    "priority": "medium",
+    "reporter": "商户本人",
+    "attachments": [],
+    "created_at": "2026-08-16T14:20:00",
+    "status": "open"
+  },
+  {
+    "ticket_id": "WO-20260817-0611",
+    "merchant_id": "3052",
+    "merchant_name": "上海杨浦服务点",
+    "issue_type": "结算金额不符",
+    "description": "本月结算少了3000块，合同签的是联营50%分润",
+    "order_id": null,
+    "priority": "high",
+    "reporter": "商户财务",
+    "attachments": ["contract_screenshot.png", "bill_screenshot.png"],
+    "created_at": "2026-08-17T10:15:00",
+    "status": "open"
+  }
+]
