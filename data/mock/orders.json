@@ -1,0 +1,18 @@
+[
+  {
+    "order_id": "ORD-8823",
+    "merchant_id": "2037",
+    "amount": 198.00,
+    "status": "pending_refund",
+    "payment_time": "2026-08-13T14:32:15",
+    "payment_channel": "wechat_pay",
+    "service_type": "battery_rental_30d",
+    "timeline": [
+      {"time": "2026-08-13T14:30:00", "event": "创建订单"},
+      {"time": "2026-08-13T14:32:15", "event": "支付成功"},
+      {"time": "2026-08-13T14:32:18", "event": "支付回调超时"},
+      {"time": "2026-08-13T18:00:00", "event": "用户申请退款"},
+      {"time": "2026-08-15T09:00:00", "event": "商户投诉工单创建"}
+    ]
+  }
+]

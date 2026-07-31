@@ -1,0 +1,38 @@
+{
+  "user_id": "5",
+  "created_at": "2026-03-09T00:23:49.569783",
+  "updated_at": "2026-03-09T00:29:08.234018",
+  "preferences": [],
+  "chat_history": [
+    {
+      "role": "user",
+      "content": "我从3月11日从北京出发，在杭州出差一周，3月18日返回北京，帮我安排行程",
+      "timestamp": "2026-03-09T00:24:06.709530",
+      "session_id": "e38d60b7"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"status\": \"partial_failure\", \"intention\": {\"intents\": [{\"type\": \"itinerary_planning\", \"confidence\": 0.9, \"description\": \"用户需要规划3月11日至18日北京-杭州的出差行程\", \"reason\": \"用户明确提出'帮我安排行程'，并提供了完整的出发/返回日期、地点、时长等旅行要素，符合行程规划的语义特征\"}, {\"type\": \"event_collection\", \"confidence\": 0.95, \"description\": \"提取用户提供的旅行细节信息\", \"reason\": \"用户主动提供了origin（北京）、destination（杭州）、dates（3月11日-18日）、purpose（出差）等结构化旅行信息，符合event_collection的触发条件\"}], \"key_entities\": {\"origin\": \"北京\", \"destination\": \"杭州\", \"date\": \"2026年03月11日-2026年03月18日\", \"duration\": \"一周\", \"other\": \"出差\"}}, \"agents_executed\": 2, \"results\": [{\"agent_name\": \"event_collection\", \"priority\": 1, \"status\": \"success\", \"data\": {\"origin\": \"北京\", \"destination\": \"杭州\", \"start_date\": \"2026-03-11\", \"end_date\": \"2026-03-18\", \"duration_days\": 7, \"return_location\": \"北京\", \"trip_purpose\": \"出差\", \"missing_info\": [], \"extracted_count\": 7, \"summary\": \"北京到杭州出差，3月11日-18日\"}}, {\"agent_name\": null, \"priority\": 2, \"status\": \"error\", \"data\": {}}], \"errors\": 1}",
+      "timestamp": "2026-03-09T00:24:22.686499",
+      "session_id": "e38d60b7"
+    },
+    {
+      "role": "user",
+      "content": "我从3月11日从北京出发，在杭州出差一周，3月18日返回北京，帮我安排行程",
+      "timestamp": "2026-03-09T00:28:01.323114",
+      "session_id": "c882180e"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"status\": \"partial_failure\", \"intention\": {\"intents\": [{\"type\": \"itinerary_planning\", \"confidence\": 0.98, \"description\": \"用户需要规划从北京到杭州的出差行程，包括出发、返回日期及时长\", \"reason\": \"用户明确提供了旅行细节（北京出发、杭州出差、3月11日至18日）并请求安排行程，符合行程规划类意图的触发条件\"}], \"key_entities\": {\"origin\": \"北京\", \"destination\": \"杭州\", \"date\": \"2026年3月11日出发，2026年3月18日返回\", \"duration\": \"7天（3月11日-3月18日）\", \"other\": \"出差\"}}, \"agents_executed\": 1, \"results\": [{\"agent_name\": \"itinerary_planning\", \"priority\": 2, \"status\": \"error\", \"data\": {\"itinerary\": {\"title\": \"行程规划\", \"duration\": \"待完善\", \"daily_plans\": []}, \"planning_complete\": false, \"error\": \"行程规划过程中出现问题：cannot access local variable 'e' where it is not associated with a value\", \"technical_error\": \"cannot access local variable 'e' where it is not associated with a value\"}}], \"errors\": 1}",
+      "timestamp": "2026-03-09T00:29:08.234003",
+      "session_id": "c882180e"
+    }
+  ],
+  "trip_history": [],
+  "statistics": {
+    "total_trips": 0,
+    "total_messages": 4,
+    "frequent_destinations": {}
+  }
+}

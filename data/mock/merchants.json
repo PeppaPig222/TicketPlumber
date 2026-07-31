@@ -1,0 +1,32 @@
+[
+  {
+    "merchant_id": "2037",
+    "name": "武汉骑手之家旗舰店",
+    "type": "KA",
+    "label": "KA",
+    "coop_status": "normal",
+    "onboard_time": "2025-03-15",
+    "contact": "张经理",
+    "contact_phone": "13800002037"
+  },
+  {
+    "merchant_id": "10001",
+    "name": "北京朝阳换电站",
+    "type": "direct",
+    "label": "直营",
+    "coop_status": "normal",
+    "onboard_time": "2024-11-01",
+    "contact": "李站长",
+    "contact_phone": "13900001001"
+  },
+  {
+    "merchant_id": "3052",
+    "name": "上海杨浦服务点",
+    "type": "joint",
+    "label": "直营",
+    "coop_status": "normal",
+    "onboard_time": "2025-06-20",
+    "contact": "王店长",
+    "contact_phone": "13700003052"
+  }
+]

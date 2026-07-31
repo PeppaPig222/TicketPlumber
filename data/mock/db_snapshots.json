@@ -1,0 +1,19 @@
+{
+  "ORD-8823": {
+    "order_main": {
+      "order_id": "ORD-8823",
+      "status": "pending_refund",
+      "updated_at": "2026-08-13T14:32:00"
+    },
+    "payment_records": {
+      "order_id": "ORD-8823",
+      "status": "refunded",
+      "refund_time": "2026-08-15T10:00:00"
+    },
+    "settlement_records": {
+      "order_id": "ORD-8823",
+      "status": "pending",
+      "settlement_period": "2026-08"
+    }
+  }
+}

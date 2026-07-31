@@ -1,0 +1,32 @@
+{
+  "user_id": "2",
+  "created_at": "2026-03-08T22:16:17.272361",
+  "updated_at": "2026-03-08T22:18:16.389279",
+  "preferences": [],
+  "chat_history": [
+    {
+      "role": "user",
+      "content": "一线城市差住宿标准是多少？",
+      "timestamp": "2026-03-08T22:16:28.620388",
+      "session_id": "58de9d94"
+    },
+    {
+      "role": "assistant",
+      "content": "{\"status\": \"completed\", \"intention\": {\"intents\": [{\"type\": \"rag_knowledge\", \"confidence\": 0.95, \"description\": \"查询一线城市差旅住宿标准的政策/标准信息\", \"reason\": \"问题明确涉及差旅住宿标准，属于旅行政策类问题，符合rag_knowledge的触发条件（询问XX标准是多少）\"}], \"key_entities\": {\"origin\": null, \"destination\": null, \"date\": null, \"duration\": null, \"other\": \"一线城市差旅住宿标准\"}}, \"agents_executed\": 1, \"results\": [{\"agent_name\": \"rag_knowledge\", \"priority\": 1, \"status\": \"success\", \"data\": {\"status\": \"success\", \"query\": \"一线城市差旅住宿标准是多少？\", \"answer\": \"{\\n    \\\"status\\\": \\\"success\\\",\\n    \\\"answer\\\": \\\"北京作为一线城市，住宿标准为每人每天500元。其中，中关村区域的经济型酒店可享受优惠，但最高不超过450元/天。\\\",\\n    \\\"retrieved_documents\\\": [\\n        {\\n            \\\"content\\\": \\\"国内城市住宿标准：一线城市（北京、上海、广州、深圳）住宿标准为每人每天500元；二级城市（省会城市、计划单列市）住宿标准为350元/天；三级城市250元/天。特殊说明：北京中关村区域经济型酒店优惠，最高不超过450元/天。\\\",\\n            \\\"metadata\\\": {\\\"source\\\": \\\"差旅标准\\\", \\\"page\\\": 1}\\n        }\\n    ],\\n    \\\"query\\\": \\\"北京的住宿标准是多少？\\\"\\n}\", \"retrieved_documents\": [{\"content\": \"不同城市差旅注意事项\\n\\n本指南提供主要商务城市的差旅实用信息，帮助员工更好地规划和安排出差行程。\\n\\n一、北京\\n\\n1. 机场信息\\n   首都国际机场（PEK）：\\n   - 位置：北京市东北方向，距市中心约25公里\\n   - 航站楼：T1、T2、T3三个航站楼\\n   - 交通：机场快轨（30分钟到东直门）、机场巴士、出租车\\n   - 建议：提前2小时到机场，T3航站楼较大需预留更多时间\\n\\n   大兴国...\", \"metadata\": {\"category\": \"城市指南\", \"title\": \"不同城市差旅注意事项\", \"source\": \"商旅知识库文档\", \"file_path\": \"data/documents/07_city_specific_tips.txt\", \"version\": \"2024版\"}}, {\"content\": \"不同城市差旅注意事项\\n\\n本指南提供主要商务城市的差旅实用信息，帮助员工更好地规划和安排出差行程。\\n\\n一、北京\\n\\n1. 机场信息\\n   首都国际机场（PEK）：\\n   - 位置：北京市东北方向，距市中心约25公里\\n   - 航站楼：T1、T2、T3三个航站楼\\n   - 交通：机场快轨（30分钟到东直门）、机场巴士、出租车\\n   - 建议：提前2小时到机场，T3航站楼较大需预留更多时间\\n\\n   大兴国...\", \"metadata\": {\"category\": \"城市指南\", \"title\": \"不同城市差旅注意事项\", \"source\": \"商旅知识库文档\", \"file_path\": \"data/documents/07_city_specific_tips.txt\", \"version\": \"2024版\"}}, {\"content\": \"差旅费用报销规定\\n\\n一、报销时间要求\\n\\n1. 常规报销时限\\n   - 出差结束后，应在30个自然日内提交报销申请\\n   - 建议在出差结束后一周内提交，避免遗忘或遗失票据\\n   - 超过30天未报销的，需要提供书面说明并经主管审批\\n\\n2. 特殊情况时限\\n   - 跨年度出差：应在当年12月31日前完成报销\\n   - 12月份出差：可在次年1月15日前报销\\n   - 长期驻外：可按月或按季度报销\\n\\n...\", \"metadata\": {\"category\": \"报销规定\", \"title\": \"差旅费用报销规定\", \"source\": \"商旅知识库文档\", \"file_path\": \"data/documents/02_reimbursement_policy.txt\", \"version\": \"2024版\"}}]}}]}",
+      "timestamp": "2026-03-08T22:16:36.564349",
+      "session_id": "58de9d94"
+    },
+    {
+      "role": "user",
+      "content": "一线城市差住宿标准是多少？",
+      "timestamp": "2026-03-08T22:18:16.389271",
+      "session_id": "0f4de7a6"
+    }
+  ],
+  "trip_history": [],
+  "statistics": {
+    "total_trips": 0,
+    "total_messages": 3,
+    "frequent_destinations": {}
+  }
+}

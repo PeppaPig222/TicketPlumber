@@ -1,0 +1,223 @@
+{
+  "user_id": "test_user",
+  "created_at": "2026-03-06T18:42:26.064217",
+  "updated_at": "2026-03-09T01:35:45.161858",
+  "preferences": [
+    {
+      "type": "hotel_brands",
+      "value": "万豪酒店和希尔顿"
+    },
+    {
+      "type": "airlines",
+      "value": "国航和东航"
+    },
+    {
+      "type": "seat_preference",
+      "value": "靠窗"
+    },
+    {
+      "type": "home_location",
+      "value": "北京朝阳区"
+    }
+  ],
+  "chat_history": [],
+  "trip_history": [
+    {
+      "trip_id": "trip_1",
+      "timestamp": "2026-03-06T19:28:19.687795",
+      "origin": "北京朝阳区",
+      "destination": "上海",
+      "start_date": null,
+      "end_date": null,
+      "purpose": "出差"
+    },
+    {
+      "trip_id": "trip_2",
+      "timestamp": "2026-03-07T13:38:26.786778",
+      "origin": "北京",
+      "destination": "杭州",
+      "start_date": "2026-03-11",
+      "end_date": "2026-03-18",
+      "purpose": "出差"
+    },
+    {
+      "trip_id": "trip_3",
+      "timestamp": "2026-03-07T13:42:55.708698",
+      "origin": "北京",
+      "destination": "上海",
+      "start_date": null,
+      "end_date": null,
+      "purpose": "出差"
+    },
+    {
+      "trip_id": "trip_4",
+      "timestamp": "2026-03-07T14:16:46.979787",
+      "origin": "北京",
+      "destination": "杭州",
+      "start_date": "2026-03-11",
+      "end_date": "2026-03-18",
+      "purpose": "出差"
+    },
+    {
+      "trip_id": "trip_5",
+      "timestamp": "2026-03-07T14:21:05.028817",
+      "origin": "北京",
+      "destination": "上海",
+      "start_date": null,
+      "end_date": null,
+      "purpose": "出差"
+    },
+    {
+      "trip_id": "trip_6",
+      "timestamp": "2026-03-07T16:40:42.015956",
+      "origin": "北京",
+      "destination": "杭州",
+      "start_date": "2026-03-11",
+      "end_date": "2026-03-18",
+      "purpose": "出差"
+    },
+    {
+      "trip_id": "trip_7",
+      "timestamp": "2026-03-07T16:44:26.443711",
+      "origin": "北京",
+      "destination": "上海",
+      "start_date": null,
+      "end_date": null,
+      "purpose": "出差"
+    },
+    {
+      "trip_id": "trip_8",
+      "timestamp": "2026-03-07T17:02:07.770058",
+      "origin": "北京",
+      "destination": "杭州",
+      "start_date": "2026-03-11",
+      "end_date": "2026-03-18",
+      "purpose": "出差"
+    },
+    {
+      "trip_id": "trip_9",
+      "timestamp": "2026-03-07T17:06:19.924285",
+      "origin": "北京朝阳区",
+      "destination": "上海",
+      "start_date": null,
+      "end_date": null,
+      "purpose": "出差"
+    },
+    {
+      "trip_id": "trip_10",
+      "timestamp": "2026-03-07T18:15:27.022735",
+      "origin": "北京",
+      "destination": "杭州",
+      "start_date": "2026-03-11",
+      "end_date": "2026-03-18",
+      "purpose": "出差"
+    },
+    {
+      "trip_id": "trip_11",
+      "timestamp": "2026-03-07T18:19:50.322491",
+      "origin": "北京",
+      "destination": "上海",
+      "start_date": null,
+      "end_date": null,
+      "purpose": "出差"
+    },
+    {
+      "trip_id": "trip_12",
+      "timestamp": "2026-03-08T21:25:32.436346",
+      "origin": "北京",
+      "destination": "杭州",
+      "start_date": "2026-03-11",
+      "end_date": "2026-03-18",
+      "purpose": "出差"
+    },
+    {
+      "trip_id": "trip_13",
+      "timestamp": "2026-03-08T21:28:19.297834",
+      "origin": "北京朝阳区",
+      "destination": "上海",
+      "start_date": null,
+      "end_date": null,
+      "purpose": "出差"
+    },
+    {
+      "trip_id": "trip_14",
+      "timestamp": "2026-03-08T22:15:21.483364",
+      "origin": "北京",
+      "destination": "杭州",
+      "start_date": "2026-03-11",
+      "end_date": "2026-03-18",
+      "purpose": "出差"
+    },
+    {
+      "trip_id": "trip_15",
+      "timestamp": "2026-03-08T22:18:29.915632",
+      "origin": "北京",
+      "destination": "上海",
+      "start_date": null,
+      "end_date": null,
+      "purpose": "出差"
+    },
+    {
+      "trip_id": "trip_16",
+      "timestamp": "2026-03-08T22:49:50.513873",
+      "origin": "北京",
+      "destination": "杭州",
+      "start_date": "2026-03-11",
+      "end_date": "2026-03-18",
+      "purpose": "出差"
+    },
+    {
+      "trip_id": "trip_17",
+      "timestamp": "2026-03-08T22:56:42.210248",
+      "origin": "北京朝阳区",
+      "destination": "上海",
+      "start_date": null,
+      "end_date": null,
+      "purpose": "出差"
+    },
+    {
+      "trip_id": "trip_18",
+      "timestamp": "2026-03-08T23:26:49.165696",
+      "origin": "北京",
+      "destination": "杭州",
+      "start_date": "2026-03-11",
+      "end_date": "2026-03-18",
+      "purpose": "出差"
+    },
+    {
+      "trip_id": "trip_19",
+      "timestamp": "2026-03-08T23:31:24.795639",
+      "origin": "北京",
+      "destination": "上海",
+      "start_date": null,
+      "end_date": null,
+      "purpose": "出差"
+    },
+    {
+      "trip_id": "trip_20",
+      "timestamp": "2026-03-09T00:20:47.385876",
+      "origin": "北京",
+      "destination": "上海",
+      "start_date": null,
+      "end_date": null,
+      "purpose": "出差"
+    },
+    {
+      "trip_id": "trip_21",
+      "timestamp": "2026-03-09T01:35:45.161838",
+      "origin": "北京",
+      "destination": "上海",
+      "start_date": null,
+      "end_date": null,
+      "purpose": "出差"
+    }
+  ],
+  "statistics": {
+    "total_trips": 21,
+    "total_messages": 0,
+    "frequent_destinations": {
+      "上海": 12,
+      "杭州": 9
+    }
+  }
+}

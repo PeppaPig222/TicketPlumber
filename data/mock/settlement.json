@@ -1,0 +1,24 @@
+[
+  {
+    "merchant_id": "3052",
+    "contract_type": "联营",
+    "settlement_ratio": 0.50,
+    "actual_ratio": 0.60,
+    "bill_period": "2026-08",
+    "bill_total": 6000.00,
+    "settled_amount": 3600.00,
+    "expected_amount": 3000.00,
+    "difference": 600.00,
+    "settlement_status": "已打款",
+    "settlement_timeline": [
+      {"time": "2026-08-01", "event": "账单生成"},
+      {"time": "2026-08-03", "event": "捏结"},
+      {"time": "2026-08-05", "event": "推送"},
+      {"time": "2026-08-08", "event": "打款"},
+      {"time": "2026-08-08", "event": "完成"}
+    ],
+    "tag_change_log": [
+      {"time": "2026-05-15", "event": "数据脚本批量更新", "from": "联营(50%)", "to": "直营(60%)"}
+    ]
+  }
+]

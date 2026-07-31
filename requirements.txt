@@ -1,0 +1,35 @@
+# ============================================================
+# 小哈工单智能诊断助手 — 依赖清单
+# pip install -r requirements.txt
+# ============================================================
+
+# --- 基础 ---
+setuptools>=69.0.0,<82   # milvus_lite 依赖 pkg_resources
+
+# --- Multi-Agent 框架 ---
+agentscope==1.0.16
+
+# --- LLM 调用 ---
+requests==2.32.3
+
+# --- RAG 与向量库 ---
+pymilvus[milvus_lite]==2.6.9    # Milvus Lite 本地向量库 (.db)
+sentence-transformers==5.2.3    # BGE 文本向量化
+
+# --- CLI 界面 ---
+rich==13.9.4
+
+# --- 网络搜索 ---
+ddgs==9.10.0
+
+# --- Web API 层（FastAPI + SSE 诊断面板） ---
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+sse-starlette>=2.0.0          # Server-Sent Events 流式推送
+
+# --- 配置管理 ---
+pydantic-settings>=2.5.0      # 环境变量 + .env 配置
+
+# --- 测试 ---
+pytest>=8.3.0
+pytest-asyncio>=0.24.0        # 异步测试支持

@@ -1,0 +1,11 @@
+[
+  {
+    "merchant_id": "10001",
+    "total_quota": 500,
+    "allocated_quota": 480,
+    "available_quota": 20,
+    "quota_type": "免时长天数",
+    "expiring_quota": 50,
+    "expire_date": "2026-09-01"
+  }
+]
