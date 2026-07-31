@@ -6,6 +6,7 @@ __pycache__/
 .Python
 env/
 venv/
+.venv/
 ENV/
 build/
 develop-eggs/
@@ -35,8 +36,11 @@ wheels/
 
 # Data
 data/rag_knowledge/
+data/models/
+data/memory/
 data/preferences/*.json
 !data/preferences/.gitkeep
+.claude/skills/ask-question/data/rag_knowledge/
 
 # Logs
 *.log
