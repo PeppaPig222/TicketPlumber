@@ -7,7 +7,44 @@
     "coop_status": "normal",
     "onboard_time": "2025-03-15",
     "contact": "张经理",
-    "contact_phone": "13800002037"
+    "contact_phone": "13800002037",
+    "contract": {
+      "contract_id": "CT-2037-2025",
+      "contract_type": "KA年度框架协议",
+      "start_date": "2025-03-15",
+      "end_date": "2026-03-14",
+      "settlement_ratio": 0.72,
+      "renewal_status": "待续签"
+    },
+    "org_tree": {
+      "parent_merchant_id": null,
+      "region": "华中区",
+      "city": "武汉",
+      "sub_merchants": [
+        {"merchant_id": "2037-01", "name": "武汉光谷站", "status": "active"},
+        {"merchant_id": "2037-02", "name": "武汉汉口站", "status": "active"}
+      ]
+    },
+    "permissions": {
+      "asset_allocate": true,
+      "cross_merchant_allocate": false,
+      "refund_auto_audit": true,
+      "settlement_view": true,
+      "data_export": true
+    },
+    "onboarding": {
+      "status": "completed",
+      "steps": [
+        {"step": "资质审核", "status": "passed", "time": "2025-03-10"},
+        {"step": "合同签署", "status": "passed", "time": "2025-03-12"},
+        {"step": "系统对接", "status": "passed", "time": "2025-03-14"},
+        {"step": "上线验收", "status": "passed", "time": "2025-03-15"}
+      ]
+    },
+    "blacklist": {
+      "is_blacklisted": false,
+      "records": []
+    }
   },
   {
     "merchant_id": "10001",
@@ -17,7 +54,44 @@
     "coop_status": "normal",
     "onboard_time": "2024-11-01",
     "contact": "李站长",
-    "contact_phone": "13900001001"
+    "contact_phone": "13900001001",
+    "contract": {
+      "contract_id": "CT-10001-2024",
+      "contract_type": "直营",
+      "start_date": "2024-11-01",
+      "end_date": "2027-10-31",
+      "settlement_ratio": 1.0,
+      "renewal_status": "长期有效"
+    },
+    "org_tree": {
+      "parent_merchant_id": null,
+      "region": "华北区",
+      "city": "北京",
+      "sub_merchants": [
+        {"merchant_id": "10001-01", "name": "北京三元桥站", "status": "active"},
+        {"merchant_id": "10001-02", "name": "北京国贸站", "status": "inactive"}
+      ]
+    },
+    "permissions": {
+      "asset_allocate": true,
+      "cross_merchant_allocate": false,
+      "refund_auto_audit": true,
+      "settlement_view": true,
+      "data_export": false
+    },
+    "onboarding": {
+      "status": "completed",
+      "steps": [
+        {"step": "资质审核", "status": "passed", "time": "2024-10-20"},
+        {"step": "合同签署", "status": "passed", "time": "2024-10-25"},
+        {"step": "系统对接", "status": "passed", "time": "2024-10-28"},
+        {"step": "上线验收", "status": "passed", "time": "2024-11-01"}
+      ]
+    },
+    "blacklist": {
+      "is_blacklisted": false,
+      "records": []
+    }
   },
   {
     "merchant_id": "3052",
@@ -27,6 +101,91 @@
     "coop_status": "normal",
     "onboard_time": "2025-06-20",
     "contact": "王店长",
-    "contact_phone": "13700003052"
+    "contact_phone": "13700003052",
+    "contract": {
+      "contract_id": "CT-3052-2025",
+      "contract_type": "联营",
+      "start_date": "2025-06-20",
+      "end_date": "2026-06-19",
+      "settlement_ratio": 0.50,
+      "renewal_status": "正常"
+    },
+    "org_tree": {
+      "parent_merchant_id": null,
+      "region": "华东区",
+      "city": "上海",
+      "sub_merchants": [
+        {"merchant_id": "3052-01", "name": "上海五角场站", "status": "active"},
+        {"merchant_id": "3052-02", "name": "上海张江站", "status": "active"}
+      ]
+    },
+    "permissions": {
+      "asset_allocate": true,
+      "cross_merchant_allocate": true,
+      "refund_auto_audit": false,
+      "settlement_view": true,
+      "data_export": true
+    },
+    "onboarding": {
+      "status": "completed",
+      "steps": [
+        {"step": "资质审核", "status": "passed", "time": "2025-06-15"},
+        {"step": "合同签署", "status": "passed", "time": "2025-06-17"},
+        {"step": "系统对接", "status": "passed", "time": "2025-06-18"},
+        {"step": "上线验收", "status": "passed", "time": "2025-06-20"}
+      ]
+    },
+    "blacklist": {
+      "is_blacklisted": false,
+      "records": []
+    }
+  },
+  {
+    "merchant_id": "9999",
+    "name": "测试黑名单商户",
+    "type": "direct",
+    "label": "直营",
+    "coop_status": "suspended",
+    "onboard_time": "2024-01-01",
+    "contact": "测试",
+    "contact_phone": "13000000000",
+    "contract": {
+      "contract_id": "CT-9999-2024",
+      "contract_type": "直营",
+      "start_date": "2024-01-01",
+      "end_date": "2024-12-31",
+      "settlement_ratio": 1.0,
+      "renewal_status": "已到期"
+    },
+    "org_tree": {
+      "parent_merchant_id": null,
+      "region": "测试区",
+      "city": "测试市",
+      "sub_merchants": []
+    },
+    "permissions": {
+      "asset_allocate": false,
+      "cross_merchant_allocate": false,
+      "refund_auto_audit": false,
+      "settlement_view": false,
+      "data_export": false
+    },
+    "onboarding": {
+      "status": "rejected",
+      "steps": [
+        {"step": "资质审核", "status": "rejected", "time": "2024-01-01", "reason": "资质造假"}
+      ]
+    },
+    "blacklist": {
+      "is_blacklisted": true,
+      "records": [
+        {
+          "reason": "资质造假",
+          "blacklisted_at": "2024-01-02T00:00:00",
+          "operator": "风控系统",
+          "status": "active"
+        }
+      ]
+    }
   }
 ]

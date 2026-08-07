@@ -5,7 +5,6 @@
 测试短期记忆和长期记忆的功能
 """
 import sys
-import os
 from pathlib import Path
 
 # 添加项目根目录到路径
@@ -17,6 +16,9 @@ from context.memory_manager import MemoryManager
 from agentscope import init as init_agentscope
 from agentscope.model import OpenAIChatModel
 import logging
+import pytest
+
+pytestmark = pytest.mark.asyncio
 
 # 配置日志（只显示WARNING及以上）
 logging.basicConfig(

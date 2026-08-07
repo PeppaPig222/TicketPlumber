@@ -1,24 +1,36 @@
 """
 记忆管理器 (Memory Manager)
-统一管理两层记忆，提供简单的API
+统一管理三层记忆，提供简单的API
 """
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List
 from .short_term_memory import ShortTermMemory
 from .long_term_memory import LongTermMemory
+from .merchant_profile_store import MerchantProfileStore
+from .diagnosis_pattern_store import DiagnosisPatternStore
 import logging
-import json
 
 logger = logging.getLogger(__name__)
 
 
 class MemoryManager:
     """
-    记忆管理器：统一管理两层记忆
-    - 短期记忆：最近对话（会话级）
+    记忆管理器：统一管理三层记忆
+    - 短期记忆：最近对话（会话级，100轮）
     - 长期记忆：用户偏好和诊断历史（跨会话）
+    - 商户画像：商户级中期记忆（统计/归属倾向/标签）
+    - 诊断模式库：长期向量记忆（成功诊断路径模板）
     """
 
-    def __init__(self, user_id: str, session_id: str, storage_path: str = "data/memory", llm_model=None):
+    def __init__(
+        self,
+        user_id: str,
+        session_id: str,
+        storage_path: str = "data/memory",
+        llm_model=None,
+        merchant_id: str = None,
+        milvus_client=None,
+        embedding_model=None,
+    ):
         """
         初始化记忆管理器
 
@@ -27,16 +39,31 @@ class MemoryManager:
             session_id: 会话ID
             storage_path: 长期记忆存储路径
             llm_model: LLM模型实例（用于总结长期记忆）
+            merchant_id: 商户ID（可选，用于商户画像）
+            milvus_client: MilvusClient 实例（可选，用于诊断模式库）
+            embedding_model: 向量化模型（可选，用于诊断模式库）
         """
         self.user_id = user_id
         self.session_id = session_id
         self.llm_model = llm_model
+        self.merchant_id = merchant_id
 
-        # 初始化两层记忆
-        self.short_term = ShortTermMemory(max_turns=10)
+        # 初始化各层记忆
+        self.short_term = ShortTermMemory(max_turns=100)
         self.long_term = LongTermMemory(user_id, storage_path)
+        self.merchant_profile = (
+            MerchantProfileStore(merchant_id, storage_path) if merchant_id else None
+        )
+        self.pattern_store = (
+            DiagnosisPatternStore(milvus_client, embedding_model)
+            if milvus_client and embedding_model
+            else None
+        )
 
-        logger.info(f"Memory manager initialized for user {user_id}, session {session_id}")
+        logger.info(
+            f"Memory manager initialized for user {user_id}, session {session_id}, "
+            f"merchant={merchant_id}"
+        )
 
     # ========== 短期记忆操作 ==========
 
@@ -62,12 +89,12 @@ class MemoryManager:
 
     def get_full_context(self) -> Dict[str, Any]:
         """
-        获取完整上下文（两层记忆）
+        获取完整上下文（三层记忆）
 
         Returns:
             完整上下文字典
         """
-        return {
+        context = {
             "short_term": {
                 "recent_dialogue": self.short_term.get_recent_context(5),
                 "context_string": self.short_term.get_context_string(5),
@@ -79,8 +106,74 @@ class MemoryManager:
                 "diagnosis_history": self.long_term.get_diagnosis_history(5),
                 "common_issue_types": self.long_term.get_common_issue_types(3),
                 "statistics": self.long_term.get_statistics()
-            }
+            },
+            "merchant_profile": None,
+            "similar_patterns": [],
         }
+
+        # 商户画像（中期记忆）
+        if self.merchant_profile:
+            context["merchant_profile"] = self.merchant_profile.get_profile()
+
+        return context
+
+    async def record_diagnosis(self, diagnosis_result: Dict[str, Any]):
+        """
+        统一收口：一次诊断完成后写入所有相关记忆层
+
+        Args:
+            diagnosis_result: 诊断结果字典，需包含
+                ticket_id / merchant_id / issue_type / responsible_party / root_cause / summary / timestamp
+        """
+        ticket_id = diagnosis_result.get("ticket_id", "")
+        merchant_id = diagnosis_result.get("merchant_id", "") or self.merchant_id
+        issue_type = diagnosis_result.get("issue_type", "")
+        responsible_party = diagnosis_result.get("responsible_party", "")
+        root_cause = diagnosis_result.get("root_cause", "")
+        summary = diagnosis_result.get("summary", "")
+        timestamp = diagnosis_result.get("timestamp")
+
+        # 1. 长期记忆：用户维度诊断历史
+        self.long_term.save_diagnosis_history({
+            "ticket_id": ticket_id,
+            "merchant_id": merchant_id,
+            "issue_type": issue_type,
+            "responsible_party": responsible_party,
+            "root_cause": root_cause,
+            "summary": summary,
+            "timestamp": timestamp,
+        })
+
+        # 2. 商户画像：商户维度聚合统计
+        if self.merchant_profile and merchant_id:
+            self.merchant_profile.record_diagnosis(
+                ticket_id=ticket_id,
+                issue_type=issue_type,
+                responsible_party=responsible_party,
+                root_cause=root_cause,
+                timestamp=timestamp,
+            )
+
+        # 3. 诊断模式库：向量沉淀成功路径
+        if self.pattern_store:
+            await self.pattern_store.save_pattern(diagnosis_result)
+
+        logger.info(f"Recorded diagnosis across memory layers: {ticket_id}")
+
+    async def find_similar_patterns(self, query: str, k: int = 3) -> List[Dict[str, Any]]:
+        """
+        从诊断模式库检索相似历史模式
+
+        Args:
+            query: 当前问题描述
+            k: Top-K
+
+        Returns:
+            相似模式列表
+        """
+        if not self.pattern_store:
+            return []
+        return await self.pattern_store.find_similar(query, k=k)
 
     def get_context_for_agent(self, long_term_summary: str = None) -> str:
         """
@@ -238,7 +331,7 @@ class MemoryManager:
 
         # 检查是否在事件循环中
         try:
-            loop = asyncio.get_running_loop()
+            asyncio.get_running_loop()
             # 已经在事件循环中，不能使用 asyncio.run
             logger.warning("get_long_term_summary called from async context, please use get_long_term_summary_async instead")
             return ""

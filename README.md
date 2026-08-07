@@ -154,7 +154,14 @@ CLI / HTTP Request
 - `skills/registry.py`
   - Skill 注册中心
 - `utils/tool_registry.py`
-  - 数据查询、日志追踪、知识库检索等工具统一封装
+  - 9 个核心工具：query_ticket / query_order / trace_api / query_merchant / query_asset / query_settlement / check_config / check_data / search_kb
+- `agents/diagnosis_agents.py`
+  - 已落地 30+ 个原子 Skill，覆盖：
+    - 商户管理：GetMerchantCoopStatus / GetMerchantContract / GetMerchantOrgTree / GetMerchantPermission / GetMerchantOnboarding / GetMerchantBlacklist
+    - 商家经营：GetOrderDetail / GetOrderRefund / GetAssetPool / GetAssetAllocation / GetAssetRecycle / GetProtectionPeriod / GetBillingConfig / GetProductCatalog
+    - 资金结算：GetBillDetail / GetBillCalculation / GetSettlementStatus / GetSettlementTimeline / GetReconciliation / GetInvoiceStatus / GetPaymentChannel
+    - 通用辅助：SearchHistoryTicket / SearchPolicyFAQ / ValidateFrontendState / ReconstructTimeline
+    - 三路径排查：order_code_path / order_operation_path / order_data_path 等
 
 ### 记忆与观测
 

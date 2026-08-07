@@ -17,7 +17,7 @@ class ShortTermMemory:
     - 用于上下文理解
     """
 
-    def __init__(self, max_turns: int = 10):
+    def __init__(self, max_turns: int = 100):
         """
         初始化短期记忆
 

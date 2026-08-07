@@ -13,6 +13,52 @@
       {"time": "2026-08-13T14:32:18", "event": "支付回调超时"},
       {"time": "2026-08-13T18:00:00", "event": "用户申请退款"},
       {"time": "2026-08-15T09:00:00", "event": "商户投诉工单创建"}
-    ]
+    ],
+    "refund": {
+      "refund_id": "REF-8823-001",
+      "status": "pending_review",
+      "amount": 198.00,
+      "reason": "用户误下单",
+      "applied_at": "2026-08-13T18:00:00",
+      "approved_at": null,
+      "audit_type": "manual",
+      "operator": null,
+      "refund_channel": "原路退回"
+    },
+    "product": {
+      "product_id": "P-BATTERY-30D",
+      "product_name": "30天电池租赁套餐",
+      "catalog": "battery_rental"
+    }
+  },
+  {
+    "order_id": "ORD-1001",
+    "merchant_id": "10001",
+    "amount": 68.00,
+    "status": "success",
+    "payment_time": "2026-08-14T10:00:00",
+    "payment_channel": "alipay",
+    "service_type": "battery_swap",
+    "timeline": [
+      {"time": "2026-08-14T09:58:00", "event": "创建订单"},
+      {"time": "2026-08-14T10:00:00", "event": "支付成功"},
+      {"time": "2026-08-14T10:01:00", "event": "服务完成"}
+    ],
+    "refund": {
+      "refund_id": null,
+      "status": "none",
+      "amount": 0,
+      "reason": null,
+      "applied_at": null,
+      "approved_at": null,
+      "audit_type": null,
+      "operator": null,
+      "refund_channel": null
+    },
+    "product": {
+      "product_id": "P-SWAP-01",
+      "product_name": "单次换电服务",
+      "catalog": "battery_swap"
+    }
   }
 ]

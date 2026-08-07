@@ -391,6 +391,309 @@ async def run_search_policy_faq(context: Dict[str, Any], registry) -> Dict[str, 
     }
 
 
+# ========== Batch 2：原子 Skill 补齐 ==========
+
+async def run_get_merchant_coop_status(context: Dict[str, Any], registry) -> Dict[str, Any]:
+    """GetMerchantCoopStatus：查询商户合作状态"""
+    merchant_id = _context_value(context, "merchant_id")
+    if not merchant_id:
+        return {"missing_info": ["merchant_id"], "summary": "缺少商户号，暂无法查询合作状态"}
+    result = await registry.execute("query_merchant", merchant_id=merchant_id)
+    merchant = result.get("data", {}) if result.get("status") == "success" else {}
+    coop = merchant.get("coop_status", "未知")
+    return {
+        "coop_status": coop,
+        "summary": f"商户{merchant_id}合作状态为 {coop}",
+        "tools_called": ["query_merchant"],
+    }
+
+
+async def run_get_merchant_contract(context: Dict[str, Any], registry) -> Dict[str, Any]:
+    """GetMerchantContract：查询商户合同信息"""
+    merchant_id = _context_value(context, "merchant_id")
+    if not merchant_id:
+        return {"missing_info": ["merchant_id"], "summary": "缺少商户号，暂无法查询合同"}
+    result = await registry.execute("query_merchant", merchant_id=merchant_id)
+    merchant = result.get("data", {}) if result.get("status") == "success" else {}
+    contract = merchant.get("contract", {})
+    return {
+        "contract": contract,
+        "summary": f"商户{merchant_id}合同类型 {contract.get('contract_type', '未知')}，分润比例 {contract.get('settlement_ratio', '未知')}",
+        "tools_called": ["query_merchant"],
+    }
+
+
+async def run_get_merchant_org_tree(context: Dict[str, Any], registry) -> Dict[str, Any]:
+    """GetMerchantOrgTree：查询商户组织树"""
+    merchant_id = _context_value(context, "merchant_id")
+    if not merchant_id:
+        return {"missing_info": ["merchant_id"], "summary": "缺少商户号，暂无法查询组织树"}
+    result = await registry.execute("query_merchant", merchant_id=merchant_id)
+    merchant = result.get("data", {}) if result.get("status") == "success" else {}
+    org_tree = merchant.get("org_tree", {})
+    sub_count = len(org_tree.get("sub_merchants", []))
+    return {
+        "org_tree": org_tree,
+        "summary": f"商户{merchant_id}位于 {org_tree.get('region', '未知')}-{org_tree.get('city', '未知')}，下辖 {sub_count} 个子商户",
+        "tools_called": ["query_merchant"],
+    }
+
+
+async def run_get_merchant_permission(context: Dict[str, Any], registry) -> Dict[str, Any]:
+    """GetMerchantPermission：查询商户权限配置"""
+    merchant_id = _context_value(context, "merchant_id")
+    if not merchant_id:
+        return {"missing_info": ["merchant_id"], "summary": "缺少商户号，暂无法查询权限"}
+    result = await registry.execute("query_merchant", merchant_id=merchant_id)
+    merchant = result.get("data", {}) if result.get("status") == "success" else {}
+    permissions = merchant.get("permissions", {})
+    enabled = [k for k, v in permissions.items() if v]
+    return {
+        "permissions": permissions,
+        "summary": f"商户{merchant_id}已开启权限: {', '.join(enabled) if enabled else '无'}",
+        "tools_called": ["query_merchant"],
+    }
+
+
+async def run_get_merchant_onboarding(context: Dict[str, Any], registry) -> Dict[str, Any]:
+    """GetMerchantOnboarding：查询商户入驻状态"""
+    merchant_id = _context_value(context, "merchant_id")
+    if not merchant_id:
+        return {"missing_info": ["merchant_id"], "summary": "缺少商户号，暂无法查询入驻状态"}
+    result = await registry.execute("query_merchant", merchant_id=merchant_id)
+    merchant = result.get("data", {}) if result.get("status") == "success" else {}
+    onboarding = merchant.get("onboarding", {})
+    steps = onboarding.get("steps", [])
+    completed = sum(1 for s in steps if s.get("status") == "passed")
+    return {
+        "onboarding": onboarding,
+        "summary": f"商户{merchant_id}入驻状态 {onboarding.get('status', '未知')}，已完成 {completed}/{len(steps)} 步",
+        "tools_called": ["query_merchant"],
+    }
+
+
+async def run_get_merchant_blacklist(context: Dict[str, Any], registry) -> Dict[str, Any]:
+    """GetMerchantBlacklist：查询商户黑名单记录"""
+    merchant_id = _context_value(context, "merchant_id")
+    if not merchant_id:
+        return {"missing_info": ["merchant_id"], "summary": "缺少商户号，暂无法查询黑名单"}
+    result = await registry.execute("query_merchant", merchant_id=merchant_id)
+    merchant = result.get("data", {}) if result.get("status") == "success" else {}
+    blacklist = merchant.get("blacklist", {})
+    is_blacklisted = blacklist.get("is_blacklisted", False)
+    records = blacklist.get("records", [])
+    return {
+        "blacklist": blacklist,
+        "summary": f"商户{merchant_id}黑名单状态: {'已拉黑' if is_blacklisted else '正常'}，历史记录 {len(records)} 条",
+        "tools_called": ["query_merchant"],
+    }
+
+
+async def run_get_order_refund(context: Dict[str, Any], registry) -> Dict[str, Any]:
+    """GetOrderRefund：查询订单退款记录"""
+    order_id = _context_value(context, "order_id")
+    if not order_id:
+        return {"missing_info": ["order_id"], "summary": "缺少订单号，暂无法查询退款"}
+    result = await registry.execute("query_order", order_id=order_id)
+    order = result.get("data", {}) if result.get("status") == "success" else {}
+    refund = order.get("refund", {})
+    return {
+        "refund": refund,
+        "summary": f"订单{order_id}退款状态 {refund.get('status', '无退款')}，金额 {refund.get('amount', 0)}",
+        "tools_called": ["query_order"],
+    }
+
+
+async def run_get_asset_recycle(context: Dict[str, Any], registry) -> Dict[str, Any]:
+    """GetAssetRecycle：查询资产回收记录"""
+    merchant_id = _context_value(context, "merchant_id")
+    if not merchant_id:
+        return {"missing_info": ["merchant_id"], "summary": "缺少商户号，暂无法查询资产回收"}
+    result = await registry.execute("query_asset", merchant_id=merchant_id)
+    asset = result.get("data", {}) if result.get("status") == "success" else {}
+    recycle = asset.get("recycle", {})
+    records = recycle.get("recycle_records", [])
+    return {
+        "recycle": recycle,
+        "summary": f"商户{merchant_id}历史回收 {len(records)} 条，待回收 {len(recycle.get('pending_recycle', []))} 条",
+        "tools_called": ["query_asset"],
+    }
+
+
+async def run_get_protection_period(context: Dict[str, Any], registry) -> Dict[str, Any]:
+    """GetProtectionPeriod：查询用户保护期"""
+    merchant_id = _context_value(context, "merchant_id")
+    if not merchant_id:
+        return {"missing_info": ["merchant_id"], "summary": "缺少商户号，暂无法查询保护期"}
+    result = await registry.execute("query_asset", merchant_id=merchant_id)
+    asset = result.get("data", {}) if result.get("status") == "success" else {}
+    protection = asset.get("protection_period", {})
+    status = protection.get("status", "无")
+    return {
+        "protection_period": protection,
+        "summary": f"目标用户保护期状态 {status}，截止时间 {protection.get('end_time', '无')}",
+        "tools_called": ["query_asset"],
+    }
+
+
+async def run_get_billing_config(context: Dict[str, Any], registry) -> Dict[str, Any]:
+    """GetBillingConfig：查询计费配置"""
+    merchant_id = _context_value(context, "merchant_id")
+    if not merchant_id:
+        return {"missing_info": ["merchant_id"], "summary": "缺少商户号，暂无法查询计费配置"}
+    result = await registry.execute("query_asset", merchant_id=merchant_id)
+    asset = result.get("data", {}) if result.get("status") == "success" else {}
+    billing = asset.get("billing_config", {})
+    return {
+        "billing_config": billing,
+        "summary": f"商户{merchant_id}计费周期 {billing.get('billing_cycle', '未知')}，单价 {billing.get('unit_price', '未知')}，税率 {billing.get('tax_rate', '未知')}",
+        "tools_called": ["query_asset"],
+    }
+
+
+async def run_get_product_catalog(context: Dict[str, Any], registry) -> Dict[str, Any]:
+    """GetProductCatalog：查询产品目录"""
+    merchant_id = _context_value(context, "merchant_id")
+    if not merchant_id:
+        return {"missing_info": ["merchant_id"], "summary": "缺少商户号，暂无法查询产品目录"}
+    result = await registry.execute("query_asset", merchant_id=merchant_id)
+    asset = result.get("data", {}) if result.get("status") == "success" else {}
+    catalog = asset.get("product_catalog", [])
+    active = [p for p in catalog if p.get("status") == "active"]
+    return {
+        "product_catalog": catalog,
+        "summary": f"商户{merchant_id}产品目录共 {len(catalog)} 个，在售 {len(active)} 个",
+        "tools_called": ["query_asset"],
+    }
+
+
+async def run_get_bill_calculation(context: Dict[str, Any], registry) -> Dict[str, Any]:
+    """GetBillCalculation：查询账单计算明细"""
+    merchant_id = _context_value(context, "merchant_id")
+    if not merchant_id:
+        return {"missing_info": ["merchant_id"], "summary": "缺少商户号，暂无法查询账单计算"}
+    result = await registry.execute("query_settlement", merchant_id=merchant_id)
+    data = result.get("data", {}) if result.get("status") == "success" else {}
+    calc = data.get("bill_calculation", {})
+    error = calc.get("calculation_error")
+    return {
+        "bill_calculation": calc,
+        "summary": f"账单预期 {calc.get('expected_amount', '未知')}，实际 {calc.get('actual_amount', '未知')}" + (f"，差异原因: {error}" if error else "，计算一致"),
+        "tools_called": ["query_settlement"],
+    }
+
+
+async def run_get_settlement_status(context: Dict[str, Any], registry) -> Dict[str, Any]:
+    """GetSettlementStatus：查询结算状态"""
+    merchant_id = _context_value(context, "merchant_id")
+    if not merchant_id:
+        return {"missing_info": ["merchant_id"], "summary": "缺少商户号，暂无法查询结算状态"}
+    result = await registry.execute("query_settlement", merchant_id=merchant_id)
+    data = result.get("data", {}) if result.get("status") == "success" else {}
+    return {
+        "settlement_status": data.get("settlement_status", "未知"),
+        "summary": f"商户{merchant_id}结算状态 {data.get('settlement_status', '未知')}，账期 {data.get('bill_period', '未知')}",
+        "tools_called": ["query_settlement"],
+    }
+
+
+async def run_get_settlement_timeline(context: Dict[str, Any], registry) -> Dict[str, Any]:
+    """GetSettlementTimeline：查询结算时间线"""
+    merchant_id = _context_value(context, "merchant_id")
+    if not merchant_id:
+        return {"missing_info": ["merchant_id"], "summary": "缺少商户号，暂无法查询结算时间线"}
+    result = await registry.execute("query_settlement", merchant_id=merchant_id)
+    data = result.get("data", {}) if result.get("status") == "success" else {}
+    timeline = data.get("settlement_timeline", [])
+    return {
+        "settlement_timeline": timeline,
+        "summary": f"商户{merchant_id}结算时间线共 {len(timeline)} 个节点，最近节点: {timeline[-1]['event'] if timeline else '无'}",
+        "tools_called": ["query_settlement"],
+    }
+
+
+async def run_get_reconciliation(context: Dict[str, Any], registry) -> Dict[str, Any]:
+    """GetReconciliation：查询对账结果"""
+    merchant_id = _context_value(context, "merchant_id")
+    if not merchant_id:
+        return {"missing_info": ["merchant_id"], "summary": "缺少商户号，暂无法查询对账"}
+    result = await registry.execute("query_settlement", merchant_id=merchant_id)
+    data = result.get("data", {}) if result.get("status") == "success" else {}
+    recon = data.get("reconciliation", {})
+    status = recon.get("status", "未知")
+    diff = recon.get("difference", 0)
+    return {
+        "reconciliation": recon,
+        "summary": f"商户{merchant_id}对账状态 {status}" + (f"，差异 {diff}" if diff else "，三方一致"),
+        "tools_called": ["query_settlement"],
+    }
+
+
+async def run_get_invoice_status(context: Dict[str, Any], registry) -> Dict[str, Any]:
+    """GetInvoiceStatus：查询发票状态"""
+    merchant_id = _context_value(context, "merchant_id")
+    if not merchant_id:
+        return {"missing_info": ["merchant_id"], "summary": "缺少商户号，暂无法查询发票"}
+    result = await registry.execute("query_settlement", merchant_id=merchant_id)
+    data = result.get("data", {}) if result.get("status") == "success" else {}
+    invoice = data.get("invoice", {})
+    return {
+        "invoice": invoice,
+        "summary": f"商户{merchant_id}发票状态 {invoice.get('invoice_status', '未知')}，金额 {invoice.get('invoice_amount', 0)}",
+        "tools_called": ["query_settlement"],
+    }
+
+
+async def run_get_payment_channel(context: Dict[str, Any], registry) -> Dict[str, Any]:
+    """GetPaymentChannel：查询支付渠道状态"""
+    merchant_id = _context_value(context, "merchant_id")
+    if not merchant_id:
+        return {"missing_info": ["merchant_id"], "summary": "缺少商户号，暂无法查询支付渠道"}
+    result = await registry.execute("query_settlement", merchant_id=merchant_id)
+    data = result.get("data", {}) if result.get("status") == "success" else {}
+    channel = data.get("payment_channel", {})
+    return {
+        "payment_channel": channel,
+        "summary": f"商户{merchant_id}支付渠道 {channel.get('channel', '未知')}，状态 {channel.get('channel_status', '未知')}",
+        "tools_called": ["query_settlement"],
+    }
+
+
+async def run_validate_frontend_state(context: Dict[str, Any], registry) -> Dict[str, Any]:
+    """ValidateFrontendState：验证前端状态与后端是否一致"""
+    order_id = _context_value(context, "order_id")
+    if not order_id:
+        return {"missing_info": ["order_id"], "summary": "缺少订单号，暂无法验证前端状态"}
+    order_result = await registry.execute("query_order", order_id=order_id)
+    order = order_result.get("data", {}) if order_result.get("status") == "success" else {}
+    # 简化：模拟前端展示状态与后端真实状态的差异检测
+    backend_status = order.get("status", "未知")
+    frontend_status = order.get("frontend_display_status", backend_status)
+    consistent = backend_status == frontend_status
+    return {
+        "frontend_state": {"display_status": frontend_status},
+        "backend_state": {"real_status": backend_status},
+        "consistent": consistent,
+        "summary": f"前端展示状态 {frontend_status}，后端真实状态 {backend_status}，{'一致' if consistent else '不一致'}",
+        "tools_called": ["query_order"],
+    }
+
+
+async def run_reconstruct_timeline(context: Dict[str, Any], registry) -> Dict[str, Any]:
+    """ReconstructTimeline：重建事件时间线"""
+    order_id = _context_value(context, "order_id")
+    if not order_id:
+        return {"missing_info": ["order_id"], "summary": "缺少订单号，暂无法重建时间线"}
+    result = await registry.execute("query_order", order_id=order_id)
+    order = result.get("data", {}) if result.get("status") == "success" else {}
+    timeline = order.get("timeline", [])
+    return {
+        "timeline": timeline,
+        "summary": f"订单{order_id}共 {len(timeline)} 个事件节点，首事件 {timeline[0]['event'] if timeline else '无'}",
+        "tools_called": ["query_order"],
+    }
+
+
 async def run_root_cause_resolver(context: Dict[str, Any], registry) -> Dict[str, Any]:
     scenario = context.get("scenario")
     facts = (context.get("collected_data", {}) or {}).get("facts", {})
@@ -447,16 +750,42 @@ async def run_root_cause_resolver(context: Dict[str, Any], registry) -> Dict[str
 
 def build_diagnosis_agents() -> Dict[str, DiagnosticAgent]:
     return {
+        # 订单相关
         "get_order_detail": DiagnosticAgent("get_order_detail", run_get_order_detail),
         "get_order_timeline": DiagnosticAgent("get_order_timeline", run_get_order_timeline),
+        "GetOrderRefund": DiagnosticAgent("GetOrderRefund", run_get_order_refund),
+        "ReconstructTimeline": DiagnosticAgent("ReconstructTimeline", run_reconstruct_timeline),
+
+        # 商户管理
         "get_merchant_profile": DiagnosticAgent("get_merchant_profile", run_get_merchant_profile),
-        "search_history_ticket": DiagnosticAgent("search_history_ticket", run_search_history_ticket),
+        "GetMerchantCoopStatus": DiagnosticAgent("GetMerchantCoopStatus", run_get_merchant_coop_status),
+        "GetMerchantContract": DiagnosticAgent("GetMerchantContract", run_get_merchant_contract),
+        "GetMerchantOrgTree": DiagnosticAgent("GetMerchantOrgTree", run_get_merchant_org_tree),
+        "GetMerchantPermission": DiagnosticAgent("GetMerchantPermission", run_get_merchant_permission),
+        "GetMerchantOnboarding": DiagnosticAgent("GetMerchantOnboarding", run_get_merchant_onboarding),
+        "GetMerchantBlacklist": DiagnosticAgent("GetMerchantBlacklist", run_get_merchant_blacklist),
+
+        # 资产经营
         "get_asset_pool": DiagnosticAgent("get_asset_pool", run_get_asset_pool),
         "get_asset_allocation": DiagnosticAgent("get_asset_allocation", run_get_asset_allocation),
         "get_user_binding": DiagnosticAgent("get_user_binding", run_get_user_binding),
+        "GetAssetRecycle": DiagnosticAgent("GetAssetRecycle", run_get_asset_recycle),
+        "GetProtectionPeriod": DiagnosticAgent("GetProtectionPeriod", run_get_protection_period),
+        "GetBillingConfig": DiagnosticAgent("GetBillingConfig", run_get_billing_config),
+        "GetProductCatalog": DiagnosticAgent("GetProductCatalog", run_get_product_catalog),
+
+        # 结算资金
         "get_merchant_contract": DiagnosticAgent("get_merchant_contract", run_get_merchant_contract),
         "get_bill_detail": DiagnosticAgent("get_bill_detail", run_get_bill_detail),
         "get_settlement_rule": DiagnosticAgent("get_settlement_rule", run_get_settlement_rule),
+        "GetBillCalculation": DiagnosticAgent("GetBillCalculation", run_get_bill_calculation),
+        "GetSettlementStatus": DiagnosticAgent("GetSettlementStatus", run_get_settlement_status),
+        "GetSettlementTimeline": DiagnosticAgent("GetSettlementTimeline", run_get_settlement_timeline),
+        "GetReconciliation": DiagnosticAgent("GetReconciliation", run_get_reconciliation),
+        "GetInvoiceStatus": DiagnosticAgent("GetInvoiceStatus", run_get_invoice_status),
+        "GetPaymentChannel": DiagnosticAgent("GetPaymentChannel", run_get_payment_channel),
+
+        # 排查路径（仍保留供编排层直接调用）
         "order_code_path": DiagnosticAgent("order_code_path", run_order_code_path),
         "order_operation_path": DiagnosticAgent("order_operation_path", run_order_operation_path),
         "order_data_path": DiagnosticAgent("order_data_path", run_order_data_path),
@@ -466,6 +795,12 @@ def build_diagnosis_agents() -> Dict[str, DiagnosticAgent]:
         "settlement_contract_path": DiagnosticAgent("settlement_contract_path", run_settlement_contract_path),
         "settlement_calculation_path": DiagnosticAgent("settlement_calculation_path", run_settlement_calculation_path),
         "settlement_timeline_path": DiagnosticAgent("settlement_timeline_path", run_settlement_timeline_path),
+
+        # 通用辅助
+        "search_history_ticket": DiagnosticAgent("search_history_ticket", run_search_history_ticket),
         "search_policy_faq": DiagnosticAgent("search_policy_faq", run_search_policy_faq),
+        "ValidateFrontendState": DiagnosticAgent("ValidateFrontendState", run_validate_frontend_state),
+
+        # 根因判定
         "root_cause_resolver": DiagnosticAgent("root_cause_resolver", run_root_cause_resolver),
     }

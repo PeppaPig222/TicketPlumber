@@ -9,9 +9,6 @@ from typing import Any, Dict, Iterable, List, Optional
 from agentscope.agent import AgentBase
 from agentscope.message import Msg
 
-from skills.registry import SkillRegistry
-
-
 class BaseDiagnosisAgent(AgentBase):
     """为专业诊断 Agent 提供统一输入解析、Skill 调用和结构化输出。"""
 
@@ -21,7 +18,7 @@ class BaseDiagnosisAgent(AgentBase):
         self,
         name: str,
         model=None,
-        skill_registry: Optional[SkillRegistry] = None,
+        skill_registry: Optional["SkillRegistry"] = None,
         memory_manager=None,
         **kwargs,
     ):
@@ -29,7 +26,11 @@ class BaseDiagnosisAgent(AgentBase):
         _ = kwargs
         self.name = name
         self.model = model
-        self.skill_registry = skill_registry or SkillRegistry()
+        # 延迟导入，避免 agents/__init__ 与 skills.registry 之间的循环导入
+        if skill_registry is None:
+            from skills.registry import SkillRegistry
+            skill_registry = SkillRegistry()
+        self.skill_registry = skill_registry
         self.memory_manager = memory_manager
 
     def _parse_payload(self, msg: Optional[Msg]) -> Dict[str, Any]:

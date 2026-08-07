@@ -12,13 +12,95 @@
     "settlement_status": "已打款",
     "settlement_timeline": [
       {"time": "2026-08-01", "event": "账单生成"},
-      {"time": "2026-08-03", "event": "捏结"},
+      {"time": "2026-08-03", "event": "结转"},
       {"time": "2026-08-05", "event": "推送"},
       {"time": "2026-08-08", "event": "打款"},
       {"time": "2026-08-08", "event": "完成"}
     ],
     "tag_change_log": [
       {"time": "2026-05-15", "event": "数据脚本批量更新", "from": "联营(50%)", "to": "直营(60%)"}
-    ]
+    ],
+    "bill_calculation": {
+      "formula": "bill_total * settlement_ratio",
+      "inputs": {
+        "bill_total": 6000.00,
+        "settlement_ratio": 0.50
+      },
+      "expected_amount": 3000.00,
+      "actual_amount": 3600.00,
+      "calculation_error": "使用了错误的结算比例 0.60"
+    },
+    "reconciliation": {
+      "status": "mismatch",
+      "platform_amount": 6000.00,
+      "merchant_amount": 6000.00,
+      "third_party_amount": 6000.00,
+      "difference": 0,
+      "reconciliation_notes": "流水三方一致，但分润比例应用错误"
+    },
+    "invoice": {
+      "invoice_status": "已开具",
+      "invoice_amount": 3600.00,
+      "invoice_type": "增值税普通发票",
+      "issued_at": "2026-08-05",
+      "invoice_id": "INV-3052-202608-001"
+    },
+    "payment_channel": {
+      "channel": "银行转账",
+      "channel_status": "success",
+      "transaction_id": "TXN-3052-20260808",
+      "paid_at": "2026-08-08T10:00:00",
+      "bank_account": "****3052"
+    }
+  },
+  {
+    "merchant_id": "2037",
+    "contract_type": "KA年度框架协议",
+    "settlement_ratio": 0.72,
+    "actual_ratio": 0.72,
+    "bill_period": "2026-08",
+    "bill_total": 50000.00,
+    "settled_amount": 36000.00,
+    "expected_amount": 36000.00,
+    "difference": 0,
+    "settlement_status": "待推送",
+    "settlement_timeline": [
+      {"time": "2026-08-01", "event": "账单生成"},
+      {"time": "2026-08-03", "event": "结转"},
+      {"time": "2026-08-05", "event": "待推送"}
+    ],
+    "tag_change_log": [],
+    "bill_calculation": {
+      "formula": "bill_total * settlement_ratio",
+      "inputs": {
+        "bill_total": 50000.00,
+        "settlement_ratio": 0.72
+      },
+      "expected_amount": 36000.00,
+      "actual_amount": 36000.00,
+      "calculation_error": null
+    },
+    "reconciliation": {
+      "status": "matched",
+      "platform_amount": 50000.00,
+      "merchant_amount": 50000.00,
+      "third_party_amount": 50000.00,
+      "difference": 0,
+      "reconciliation_notes": "三方一致"
+    },
+    "invoice": {
+      "invoice_status": "未开具",
+      "invoice_amount": 0,
+      "invoice_type": null,
+      "issued_at": null,
+      "invoice_id": null
+    },
+    "payment_channel": {
+      "channel": "银行转账",
+      "channel_status": "pending",
+      "transaction_id": null,
+      "paid_at": null,
+      "bank_account": "****2037"
+    }
   }
 ]

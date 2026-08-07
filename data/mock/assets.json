@@ -46,6 +46,71 @@
       "roles": ["station_manager"],
       "points": ["asset_view"],
       "cross_merchant_allocate": false
-    }
+    },
+    "recycle": {
+      "recycle_records": [
+        {
+          "recycle_id": "RC-10001-001",
+          "user_id": "U-1003",
+          "recycled_quota": 50,
+          "recycle_reason": "用户退租",
+          "recycled_at": "2026-07-28T16:00:00",
+          "status": "completed"
+        }
+      ],
+      "pending_recycle": []
+    },
+    "billing_config": {
+      "billing_cycle": "monthly",
+      "unit_price": 6.8,
+      "currency": "CNY",
+      "tax_rate": 0.06,
+      "discount_rules": [
+        {"threshold": 100, "discount": 0.95},
+        {"threshold": 500, "discount": 0.90}
+      ]
+    },
+    "product_catalog": [
+      {"product_id": "P-BATTERY-30D", "product_name": "30天电池租赁套餐", "price": 198.00, "status": "active"},
+      {"product_id": "P-SWAP-10", "product_name": "10次换电券包", "price": 68.00, "status": "active"},
+      {"product_id": "P-SWAP-01", "product_name": "单次换电服务", "price": 8.00, "status": "active"}
+    ]
+  },
+  {
+    "merchant_id": "2037",
+    "total_quota": 2000,
+    "allocated_quota": 1500,
+    "available_quota": 500,
+    "quota_type": "免时长天数",
+    "expiring_quota": 100,
+    "expire_date": "2026-10-01",
+    "allocation_request": {},
+    "allocation_records": [],
+    "user_binding": {},
+    "protection_period": {},
+    "permissions": {
+      "operator_id": "EMP-2037",
+      "roles": ["ka_manager"],
+      "points": ["asset_view", "asset_allocate"],
+      "cross_merchant_allocate": true
+    },
+    "recycle": {
+      "recycle_records": [],
+      "pending_recycle": []
+    },
+    "billing_config": {
+      "billing_cycle": "monthly",
+      "unit_price": 5.5,
+      "currency": "CNY",
+      "tax_rate": 0.06,
+      "discount_rules": [
+        {"threshold": 500, "discount": 0.92},
+        {"threshold": 1000, "discount": 0.85}
+      ]
+    },
+    "product_catalog": [
+      {"product_id": "P-BATTERY-30D", "product_name": "30天电池租赁套餐", "price": 198.00, "status": "active"},
+      {"product_id": "P-BATTERY-90D", "product_name": "90天电池租赁套餐", "price": 528.00, "status": "active"}
+    ]
   }
 ]

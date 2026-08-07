@@ -28,7 +28,7 @@
 
 ### 当前还未补全
 
-- [ ] 30 个原子 Skill 全量落地
+- [x] 30 个原子 Skill 全量落地
 - [ ] 多 Agent 角色层真正落地，而不是以 workflow runner 为主
 - [ ] 回到 LazyAgentRegistry + Skill 插件化的主链路
 - [ ] 完整调度策略矩阵与降级策略
@@ -148,41 +148,41 @@
 
 ### 2.1 商户管理域
 
-- [ ] `GetMerchantCoopStatus`
-- [ ] `GetMerchantContract`
-- [ ] `GetMerchantOrgTree`
-- [ ] `GetMerchantPermission`
-- [ ] `GetMerchantOnboarding`
-- [ ] `GetMerchantBlacklist`
+- [x] `GetMerchantCoopStatus`
+- [x] `GetMerchantContract`
+- [x] `GetMerchantOrgTree`
+- [x] `GetMerchantPermission`
+- [x] `GetMerchantOnboarding`
+- [x] `GetMerchantBlacklist`
 
 ### 2.2 商家经营域
 
-- [ ] `GetOrderRefund`
-- [ ] `GetAssetRecycle`
-- [ ] `GetProtectionPeriod`
-- [ ] `GetBillingConfig`
-- [ ] `GetProductCatalog`
+- [x] `GetOrderRefund`
+- [x] `GetAssetRecycle`
+- [x] `GetProtectionPeriod`
+- [x] `GetBillingConfig`
+- [x] `GetProductCatalog`
 
 ### 2.3 资金结算域
 
-- [ ] `GetBillCalculation`
-- [ ] `GetSettlementStatus`
-- [ ] `GetSettlementTimeline`
-- [ ] `GetReconciliation`
-- [ ] `GetInvoiceStatus`
-- [ ] `GetPaymentChannel`
+- [x] `GetBillCalculation`
+- [x] `GetSettlementStatus`
+- [x] `GetSettlementTimeline`
+- [x] `GetReconciliation`
+- [x] `GetInvoiceStatus`
+- [x] `GetPaymentChannel`
 
 ### 2.4 通用辅助 Skill
 
-- [ ] `ValidateFrontendState`
-- [ ] `ReconstructTimeline`
-- [ ] 将 `SearchHistoryTicket`、`SearchPolicyFAQ` 从轻量 mock 进一步抽象成独立 Skill
+- [x] `ValidateFrontendState`
+- [x] `ReconstructTimeline`
+- [x] 将 `SearchHistoryTicket`、`SearchPolicyFAQ` 从轻量 mock 进一步抽象成独立 Skill
 
 ### 2.5 配套工作
 
-- [ ] 为新增 Skill 补对应 mock 数据文件
-- [ ] 为 `skills/registry.py` 和 `agents/diagnosis_agents.py` 补注册与测试
-- [ ] 更新 README 中“当前能力”与“支持场景”
+- [x] 为新增 Skill 补对应 mock 数据文件
+- [x] 为 `skills/registry.py` 和 `agents/diagnosis_agents.py` 补注册与测试
+- [x] 更新 README 中“当前能力”与“支持场景”
 
 ---
 
