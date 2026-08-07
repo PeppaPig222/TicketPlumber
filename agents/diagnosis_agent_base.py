@@ -20,6 +20,7 @@ class BaseDiagnosisAgent(AgentBase):
         model=None,
         skill_registry: Optional["SkillRegistry"] = None,
         memory_manager=None,
+        rag_agent=None,
         **kwargs,
     ):
         super().__init__()
@@ -32,6 +33,7 @@ class BaseDiagnosisAgent(AgentBase):
             skill_registry = SkillRegistry()
         self.skill_registry = skill_registry
         self.memory_manager = memory_manager
+        self.rag_agent = rag_agent
 
     def _parse_payload(self, msg: Optional[Msg]) -> Dict[str, Any]:
         if not msg or not getattr(msg, "content", None):

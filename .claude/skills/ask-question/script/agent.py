@@ -110,7 +110,9 @@ class RAGKnowledgeAgent(AgentBase):
         milvus_db_path = str(self.knowledge_base_path / "milvus_lite.db")
         logger.info(f"Initializing Milvus Lite at: {milvus_db_path}")
 
-        self.milvus_client = MilvusClient(uri=f"file:{milvus_db_path}")
+        # pymilvus 2.6+ Milvus Lite 直接使用本地文件路径作为 uri
+        # db_name 显式指定 default，避免 uri 被误解析为含数据库名的多段路径
+        self.milvus_client = MilvusClient(uri=milvus_db_path, db_name="default")
         self._client_created_at = None  # 用于追踪客户端创建时间
 
         # 检查collection是否存在
@@ -134,8 +136,8 @@ class RAGKnowledgeAgent(AgentBase):
     async def _ensure_connection(self):
         """确保 Milvus 连接正常，如果需要则重新创建客户端"""
         try:
-            # 尝试一个轻量级操作来检查连接
-            await self.milvus_client.has_collection(self.collection_name)
+            # has_collection 是同步方法，不要 await
+            self.milvus_client.has_collection(self.collection_name)
         except Exception as e:
             logger.warning(f"Milvus connection issue detected: {e}, reconnecting...")
             try:
@@ -147,7 +149,7 @@ class RAGKnowledgeAgent(AgentBase):
                         pass
 
                 # 重新创建客户端
-                self.milvus_client = MilvusClient(self._milvus_db_path)
+                self.milvus_client = MilvusClient(self._milvus_db_path, db_name="default")
                 logger.info("Milvus client reconnected successfully")
             except Exception as reconnect_error:
                 logger.error(f"Failed to reconnect Milvus: {reconnect_error}")

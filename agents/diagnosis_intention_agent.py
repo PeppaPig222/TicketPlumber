@@ -14,8 +14,10 @@ from utils.tool_registry import tool_registry
 class DiagnosisIntentionAgent:
     """基于工单上下文生成每一轮的专业 Agent 调度计划。"""
 
-    def __init__(self, name: str = "DiagnosisIntentionAgent"):
+    def __init__(self, name: str = "DiagnosisIntentionAgent", rag_agent=None):
         self.name = name
+        # RAG Agent 用于规则无法识别场景时做知识库 fallback
+        self.rag_agent = rag_agent
 
     async def reply(self, x: Msg = None) -> Msg:
         payload = self._parse_payload(x)
@@ -25,7 +27,7 @@ class DiagnosisIntentionAgent:
         collected_data = payload.get("collected_data", {}) or {}
         memory_context = payload.get("memory_context", {}) or {}
 
-        key_entities = self._build_entities(query, ticket, collected_data)
+        key_entities = await self._build_entities(query, ticket, collected_data)
         scenario = key_entities.get("scenario")
         issue_type = key_entities.get("issue_type")
 
@@ -70,10 +72,41 @@ class DiagnosisIntentionAgent:
         except json.JSONDecodeError:
             return {"query": str(msg.content)}
 
-    def _build_entities(self, query: str, ticket: Dict[str, Any], collected_data: Dict[str, Any]) -> Dict[str, Any]:
+    async def _build_entities(self, query: str, ticket: Dict[str, Any], collected_data: Dict[str, Any]) -> Dict[str, Any]:
+        from config import RAG_CONFIG
+
         facts = collected_data.get("facts", {}) or {}
         issue_type = ticket.get("issue_type") or facts.get("issue_type") or self._detect_issue_type(query)
         scenario = self._scenario_from_issue(issue_type, query)
+
+        # RAG fallback：当规则无法识别到具体场景时，查询知识库辅助推断
+        kb_hints = []
+        if (
+            scenario == "generic_ticket_diagnosis"
+            and self.rag_agent is not None
+            and RAG_CONFIG.get("enable_intention_fallback", True)
+        ):
+            kb_results = await self._search_kb(query)
+            if kb_results:
+                # 计算最高相似度（distance 越小越相似）
+                top_distance = min(r.get("distance", 1.0) for r in kb_results)
+                top_similarity = 1.0 - top_distance
+                threshold = RAG_CONFIG.get("min_similarity_threshold", 0.55)
+
+                kb_hints = [
+                    {
+                        "source": r.get("metadata", {}).get("source", "unknown"),
+                        "page": r.get("metadata", {}).get("page"),
+                        "title": r.get("metadata", {}).get("title", ""),
+                        "content": r.get("content", "")[:300],
+                        "similarity": round(1.0 - r.get("distance", 1.0), 3),
+                    }
+                    for r in kb_results[:3]
+                ]
+
+                if top_similarity >= threshold:
+                    kb_text = " ".join([r.get("content", "") for r in kb_results[:3]])
+                    scenario = self._scenario_from_issue(issue_type, f"{query} {kb_text}")
 
         merchant_id = ticket.get("merchant_id") or facts.get("merchant_id") or self._extract(query, r"\b\d{4,6}\b")
         order_id = ticket.get("order_id") or facts.get("order_id") or self._extract(query, r"ORD-\d+")
@@ -85,10 +118,20 @@ class DiagnosisIntentionAgent:
             "order_id": order_id,
             "issue_type": issue_type,
             "scenario": scenario,
+            "kb_hints": kb_hints,
         }
         if ticket:
             entities["ticket_description"] = ticket.get("description")
         return entities
+
+    async def _search_kb(self, query: str) -> List[Dict]:
+        """调用 RAG Agent 检索相关知识。"""
+        if self.rag_agent is None:
+            return []
+        try:
+            return await self.rag_agent.search_knowledge(query, top_k=3)
+        except Exception:
+            return []
 
     def _intent_name(self, round_num: int) -> str:
         if round_num == 1:

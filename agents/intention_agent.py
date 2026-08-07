@@ -13,11 +13,11 @@ from agents.diagnosis_intention_agent import DiagnosisIntentionAgent
 class IntentionAgent(AgentBase):
     """兼容旧调用方的诊断意图识别 Agent。"""
 
-    def __init__(self, name: str = "IntentionAgent", model=None, **kwargs):
+    def __init__(self, name: str = "IntentionAgent", model=None, rag_agent=None):
         super().__init__()
         self.name = name
         self.model = model
-        self._delegate = DiagnosisIntentionAgent(name=name)
+        self._delegate = DiagnosisIntentionAgent(name=name, rag_agent=rag_agent)
 
     async def reply(self, x: Optional[Union[Msg, List[Msg]]] = None) -> Msg:
         if isinstance(x, list):

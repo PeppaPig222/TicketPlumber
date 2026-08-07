@@ -5,6 +5,7 @@
 """
 import json
 import re
+import sys
 import uuid
 from typing import Any, Dict, List, Optional
 
@@ -54,6 +55,7 @@ class DiagnosisService:
         trace_repo: Optional[TraceRepository] = None,
         user_id: str = "diagbot_user",
         storage_path: str = "data/memory",
+        rag_agent=None,
     ):
         self.trace_repo = trace_repo or TraceRepository()
         self.skill_registry = SkillRegistry()
@@ -62,6 +64,8 @@ class DiagnosisService:
         self.storage_path = storage_path
         # 保留长期记忆实例，供 CLI 的 history/status/clear 命令兼容访问
         self.long_term_memory = LongTermMemory(user_id=user_id, storage_path=storage_path)
+        # RAG Agent：外部注入优先，否则尝试懒加载
+        self.rag_agent = rag_agent or self._load_rag_agent()
 
     async def diagnose(
         self,
@@ -110,9 +114,10 @@ class DiagnosisService:
             memory_manager=memory_manager,
             agent_kwargs={
                 "skill_registry": self.skill_registry,
+                "rag_agent": self.rag_agent,
             },
         )
-        intention_agent = IntentionAgent(name="IntentionAgent")
+        intention_agent = IntentionAgent(name="IntentionAgent", rag_agent=self.rag_agent)
         orchestrator = OrchestrationAgent(
             name="DiagnosisOrchestrationAgent",
             agent_registry=agent_registry,
@@ -218,6 +223,7 @@ class DiagnosisService:
             "registered_agents": len(self.PROFESSIONAL_AGENTS),
             "registered_skills": len(list(self.skill_registry.keys())),
             "total_diagnoses": stats.get("total_diagnoses", 0),
+            "rag_available": self.rag_agent is not None,
         }
 
     async def _load_ticket_context(self, query: str) -> Dict[str, Any]:
@@ -356,6 +362,62 @@ class DiagnosisService:
                 "补充重试和告警机制",
             ]
         return resolver
+
+    def _load_rag_agent(self):
+        """懒加载 RAGKnowledgeAgent（来自 ask-question skill），失败时返回 None。"""
+        try:
+            import importlib.util
+            from pathlib import Path
+
+            project_root = Path(__file__).resolve().parent.parent
+            agent_script = (
+                project_root
+                / ".claude"
+                / "skills"
+                / "ask-question"
+                / "script"
+                / "agent.py"
+            )
+            if not agent_script.exists():
+                return None
+
+            spec = importlib.util.spec_from_file_location(
+                "RAGKnowledgeAgentModule", agent_script
+            )
+            if spec is None or spec.loader is None:
+                return None
+
+            module = importlib.util.module_from_spec(spec)
+            sys.modules["RAGKnowledgeAgentModule"] = module
+            spec.loader.exec_module(module)
+            RAGKnowledgeAgent = module.RAGKnowledgeAgent
+
+            from config import RAG_CONFIG
+
+            model_path = RAG_CONFIG.get("embedding_model", "BAAI/bge-small-zh-v1.5")
+            path_obj = Path(model_path).expanduser()
+            if not path_obj.is_absolute():
+                path_obj = project_root / path_obj
+            embedding_model = (
+                str(path_obj.resolve()) if path_obj.exists() else model_path
+            )
+
+            kb_path = project_root / "data" / "rag_knowledge"
+            kb_path.mkdir(parents=True, exist_ok=True)
+
+            rag_agent = RAGKnowledgeAgent(
+                name="RAGKnowledgeAgent",
+                model=None,
+                knowledge_base_path=str(kb_path),
+                collection_name="ticket_diagnosis_knowledge",
+                embedding_model=embedding_model,
+                top_k=3,
+            )
+            if getattr(rag_agent, "initialized", False):
+                return rag_agent
+        except Exception:
+            pass
+        return None
 
     def _extract(self, text: str, pattern: str) -> str:
         matched = re.search(pattern, text or "")

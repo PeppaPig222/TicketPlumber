@@ -27,6 +27,43 @@ class ResolutionAgent(BaseDiagnosisAgent):
             return await self._resolve_settlement(context, previous_results)
         return await self._resolve_order(context, previous_results)
 
+    async def _search_kb(self, context: Dict) -> Dict:
+        """调用 RAG 知识库补充证据链；rag_agent 不可用时优雅降级。"""
+        from config import RAG_CONFIG
+
+        if not RAG_CONFIG.get("enable_resolution_evidence", True) or self.rag_agent is None:
+            return {"summary": "", "kb_matches": []}
+
+        try:
+            query = context.get("rewritten_query") or context.get("query") or ""
+            issue_type = context.get("issue_type") or ""
+            search_query = f"{query} {issue_type}".strip() or query
+            results = await self.rag_agent.search_knowledge(search_query, top_k=3)
+            if not results:
+                return {"summary": "", "kb_matches": []}
+
+            summaries = []
+            kb_matches = []
+            for r in results:
+                content = r.get("content", "")
+                metadata = r.get("metadata", {}) or {}
+                if content:
+                    summaries.append(content[:200])
+                kb_matches.append({
+                    "source": metadata.get("source", "unknown"),
+                    "page": metadata.get("page"),
+                    "title": metadata.get("title", ""),
+                    "content": content[:300],
+                    "similarity": round(1.0 - r.get("distance", 1.0), 3),
+                })
+
+            return {
+                "summary": "知识库参考：" + " | ".join(summaries),
+                "kb_matches": kb_matches,
+            }
+        except Exception:
+            return {"summary": "", "kb_matches": []}
+
     async def _resolve_order(self, context: Dict, previous_results: List[Dict]) -> Msg:
         history_result = await self._run_skill(
             "search_history_ticket",
@@ -42,6 +79,7 @@ class ResolutionAgent(BaseDiagnosisAgent):
             "处理建议",
             previous_results,
         )
+        kb_result = await self._search_kb(context)
         code = self._find_previous_result(previous_results, "CodeAgent")
         operation = self._find_previous_result(previous_results, "OperationAgent")
         data = self._find_previous_result(previous_results, "DataAgent")
@@ -51,6 +89,7 @@ class ResolutionAgent(BaseDiagnosisAgent):
             data.get("path_verdict", ""),
             history_result.get("summary", ""),
             policy_result.get("summary", ""),
+            kb_result.get("summary", ""),
         ]
         evidence = [item for item in evidence if item]
         return self._response(
@@ -73,6 +112,7 @@ class ResolutionAgent(BaseDiagnosisAgent):
             ],
             history_matches=history_result.get("history_matches", []),
             policy_matches=policy_result.get("policy_matches", []),
+            kb_matches=kb_result.get("kb_matches", []),
         )
 
     async def _resolve_asset(self, context: Dict, previous_results: List[Dict]) -> Msg:
@@ -83,6 +123,7 @@ class ResolutionAgent(BaseDiagnosisAgent):
             "历史处理经验",
             previous_results,
         )
+        kb_result = await self._search_kb(context)
         code = self._find_previous_result(previous_results, "CodeAgent")
         operation = self._find_previous_result(previous_results, "OperationAgent")
         data = self._find_previous_result(previous_results, "DataAgent")
@@ -91,6 +132,7 @@ class ResolutionAgent(BaseDiagnosisAgent):
             operation.get("path_verdict", ""),
             code.get("path_verdict", ""),
             history_result.get("summary", ""),
+            kb_result.get("summary", ""),
         ]
         evidence = [item for item in evidence if item]
         return self._response(
@@ -112,6 +154,7 @@ class ResolutionAgent(BaseDiagnosisAgent):
                 "申请跨商户分配权限",
             ],
             history_matches=history_result.get("history_matches", []),
+            kb_matches=kb_result.get("kb_matches", []),
         )
 
     async def _resolve_settlement(self, context: Dict, previous_results: List[Dict]) -> Msg:
@@ -129,6 +172,7 @@ class ResolutionAgent(BaseDiagnosisAgent):
             "处理建议",
             previous_results,
         )
+        kb_result = await self._search_kb(context)
         code = self._find_previous_result(previous_results, "CodeAgent")
         operation = self._find_previous_result(previous_results, "OperationAgent")
         data = self._find_previous_result(previous_results, "DataAgent")
@@ -138,6 +182,7 @@ class ResolutionAgent(BaseDiagnosisAgent):
             data.get("path_verdict", ""),
             history_result.get("summary", ""),
             policy_result.get("summary", ""),
+            kb_result.get("summary", ""),
         ]
         evidence = [item for item in evidence if item]
         return self._response(
@@ -160,4 +205,5 @@ class ResolutionAgent(BaseDiagnosisAgent):
             ],
             history_matches=history_result.get("history_matches", []),
             policy_matches=policy_result.get("policy_matches", []),
+            kb_matches=kb_result.get("kb_matches", []),
         )

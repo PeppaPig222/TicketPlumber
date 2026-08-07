@@ -33,7 +33,7 @@
 - [x] 回到 LazyAgentRegistry + Skill 插件化的主链路
 - [ ] 完整调度策略矩阵与降级策略
 - [ ] React + TypeScript + SSE 实时诊断追踪面板
-- [ ] 正式 RAG 知识库，而不是 mock keyword 检索
+- [x] 正式 RAG 知识库，而不是 mock keyword 检索
 - [ ] 工程化完整版：`pydantic-settings` / Docker / 全局结构化日志接线
 - [x] 离线评测体系与评测数据集
 
@@ -243,26 +243,33 @@
 
 ---
 
-## Batch 5：补齐 RAG 知识库
+## Batch 5：补齐 RAG 知识库（已收口）
 
 > 目标：把当前 `knowledge_base.json` 的 mock 检索升级成正式知识库方案。
+>
+> 收口标准：PDF/TXT 切分、Milvus Lite 存储、RAG 接入诊断链路、开关/阈值保护、测试覆盖均已完成。
+> 剩余 `data/knowledge/*.txt` 属于后续数据补充，不阻塞链路。
 
 ### 5.1 知识库数据
 
-- [ ] 新建 `data/knowledge/diagnosis_manual.txt`
+- [x] 支持从商户 PDF/TXT 文档切分并生成 chunks（`scripts/process_merchant_pdf.py`）
+- [x] 对复杂架构图页面生成结构化占位 chunk（图文字碎片 + 上下文关联）
+- [ ] 新建 `data/knowledge/diagnosis_manual.txt`（当前以商户 PDF 为主要来源）
 - [ ] 补历史工单经验文档
 - [ ] 补 FAQ / 政策 / 处理指引文档
 
 ### 5.2 检索链路
 
-- [ ] 将 `search_kb` 从关键词匹配改为正式检索模块
-- [ ] 区分 `SearchHistoryTicket` 与 `SearchPolicyFAQ`
-- [ ] 支持返回来源、命中片段、置信度
+- [x] 将 RAG 检索接入诊断主链路（IntentionAgent fallback + ResolutionAgent 证据补充）
+- [x] 通过 `DiagnosisService` 统一管理 `RAGKnowledgeAgent` 实例
+- [x] 支持返回来源、命中片段、页码、置信度
+- [ ] 区分 `SearchHistoryTicket` 与 `SearchPolicyFAQ`（仍复用底层 RAG 检索，待按 collection 拆分）
 
 ### 5.3 测试
 
-- [ ] 补 RAG 检索命中测试
-- [ ] 补“知识库不可用时的降级测试”
+- [x] 补 RAG 检索命中测试（`tests/test_rag_integration.py`）
+- [x] 补“知识库不可用时的降级测试”
+- [x] 补 PDF 切分与架构图占位测试
 
 ---
 

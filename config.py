@@ -25,9 +25,16 @@ SYSTEM_CONFIG = {
     "timeout": 60,  # Increased timeout for better stability
 }
 
-# RAG 知识库：嵌入模型（本地路径，无需连 HuggingFace）
+# RAG 知识库配置
 RAG_CONFIG = {
+    # 嵌入模型（本地路径，无需连 HuggingFace）
     "embedding_model": "data/models/bge-small-zh-v1.5",
+    # 是否在 IntentionAgent 规则识别失败时启用 RAG fallback
+    "enable_intention_fallback": True,
+    # 是否在 ResolutionAgent 判责阶段启用 RAG 证据补充
+    "enable_resolution_evidence": True,
+    # RAG fallback 采纳阈值：top1 相似度低于该值时不采纳推断，保持规则结果
+    "min_similarity_threshold": 0.55,
 }
 
 # 连接与可用性：重试、熔断、健康检查
