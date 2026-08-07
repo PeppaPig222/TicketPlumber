@@ -6,6 +6,7 @@ DiagBot 工单智能诊断助手 - CLI 交互界面
 import asyncio
 import os
 import sys
+import uuid
 
 project_root = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, project_root)
@@ -27,6 +28,7 @@ class DiagBotCLI:
     def __init__(self):
         self.console = Console()
         self.user_id = None
+        self.session_id = None
         self.diagnosis_service = None
 
     def print_banner(self):
@@ -55,16 +57,19 @@ class DiagBotCLI:
 
     async def initialize_system(self):
         self.user_id = Prompt.ask("用户ID", default="diagbot_user")
+        self.session_id = f"cli_{uuid.uuid4().hex[:8]}"
 
         with self.console.status("初始化诊断系统...", spinner="dots"):
             init_agentscope()
             self.diagnosis_service = DiagnosisService(user_id=self.user_id)
 
-        self.console.print(f"✓ 就绪 (用户: {self.user_id}) - 输入 help 查看帮助\n", style="green")
+        self.console.print(f"✓ 就绪 (用户: {self.user_id}, 会话: {self.session_id}) - 输入 help 查看帮助\n", style="green")
 
     async def process_query(self, user_input: str):
         with self.console.status("诊断中...", spinner="dots"):
-            result = await self.diagnosis_service.diagnose(user_input)
+            result = await self.diagnosis_service.diagnose(
+                user_input, session_id=self.session_id
+            )
         self._display_results(result)
 
     def _display_results(self, result_data: dict):

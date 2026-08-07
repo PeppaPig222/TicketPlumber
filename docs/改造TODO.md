@@ -29,13 +29,13 @@
 ### 当前还未补全
 
 - [x] 30 个原子 Skill 全量落地
-- [ ] 多 Agent 角色层真正落地，而不是以 workflow runner 为主
-- [ ] 回到 LazyAgentRegistry + Skill 插件化的主链路
+- [x] 多 Agent 角色层真正落地，而不是以 workflow runner 为主
+- [x] 回到 LazyAgentRegistry + Skill 插件化的主链路
 - [ ] 完整调度策略矩阵与降级策略
 - [ ] React + TypeScript + SSE 实时诊断追踪面板
 - [ ] 正式 RAG 知识库，而不是 mock keyword 检索
 - [ ] 工程化完整版：`pydantic-settings` / Docker / 全局结构化日志接线
-- [ ] 离线评测体系与评测数据集
+- [x] 离线评测体系与评测数据集
 
 ---
 

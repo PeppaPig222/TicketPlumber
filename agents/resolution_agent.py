@@ -13,7 +13,7 @@ from agents.diagnosis_agent_base import BaseDiagnosisAgent
 class ResolutionAgent(BaseDiagnosisAgent):
     """归因与结论生成 Agent。"""
 
-    allowed_skills = {"search_history_ticket", "search_policy_faq"}
+    allowed_skills = {"search_history_ticket", "search_policy_faq", "root_cause_resolver"}
 
     async def reply(self, x: Msg = None) -> Msg:
         payload = self._parse_payload(x)

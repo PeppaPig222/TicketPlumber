@@ -37,3 +37,19 @@ def test_diagnose_and_trace_endpoints():
     stream_response = client.get(f"/api/v1/trace/stream/{trace_id}")
     assert stream_response.status_code == 200
     assert "agent_update" in stream_response.text
+
+
+def test_diagnose_accepts_user_and_session():
+    response = client.post(
+        "/api/v1/diagnose",
+        json={
+            "query": "请诊断工单 WO-20260815-0421",
+            "user_id": "api_test_user",
+            "session_id": "sess_001",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "completed"
+    assert payload["ticket_id"] == "WO-20260815-0421"

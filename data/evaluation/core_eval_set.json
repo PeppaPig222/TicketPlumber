@@ -1,0 +1,398 @@
+[
+  {
+    "id": "intent_001",
+    "category": "intent",
+    "query": "请诊断工单 WO-20260815-0421",
+    "expected_scenario": "order_status_anomaly",
+    "expected_responsible_party": "数据侧（后台脚本）",
+    "expected_root_cause_keywords": ["状态同步", "回调超时"],
+    "expected_rounds": 3
+  },
+  {
+    "id": "intent_002",
+    "category": "intent",
+    "query": "商户2037反馈订单ORD-8823状态异常",
+    "expected_scenario": "order_status_anomaly",
+    "expected_responsible_party": "数据侧（后台脚本）",
+    "expected_root_cause_keywords": ["状态同步", "回调超时"],
+    "expected_rounds": 3
+  },
+  {
+    "id": "intent_003",
+    "category": "intent",
+    "query": "用户已支付但页面显示待退款，工单WO-20260815-0421",
+    "expected_scenario": "order_status_anomaly",
+    "expected_responsible_party": "数据侧（后台脚本）",
+    "expected_root_cause_keywords": ["状态同步", "回调超时"],
+    "expected_rounds": 3
+  },
+  {
+    "id": "intent_004",
+    "category": "intent",
+    "query": "帮我看看 WO-20260815-0421 为什么订单状态不对",
+    "expected_scenario": "order_status_anomaly",
+    "expected_responsible_party": "数据侧（后台脚本）",
+    "expected_root_cause_keywords": ["状态同步", "回调超时"],
+    "expected_rounds": 3
+  },
+  {
+    "id": "intent_005",
+    "category": "intent",
+    "query": "WO-20260815-0421 退款两天没到账",
+    "expected_scenario": "order_status_anomaly",
+    "expected_responsible_party": "数据侧（后台脚本）",
+    "expected_root_cause_keywords": ["状态同步", "回调超时"],
+    "expected_rounds": 3
+  },
+  {
+    "id": "intent_006",
+    "category": "intent",
+    "query": "武汉骑手之家旗舰店反馈订单状态异常",
+    "expected_scenario": "order_status_anomaly",
+    "expected_responsible_party": "数据侧（后台脚本）",
+    "expected_root_cause_keywords": ["状态同步", "回调超时"],
+    "expected_rounds": 3
+  },
+  {
+    "id": "intent_007",
+    "category": "intent",
+    "query": "排查一下 WO-20260815-0421 订单问题",
+    "expected_scenario": "order_status_anomaly",
+    "expected_responsible_party": "数据侧（后台脚本）",
+    "expected_root_cause_keywords": ["状态同步", "回调超时"],
+    "expected_rounds": 3
+  },
+  {
+    "id": "intent_008",
+    "category": "intent",
+    "query": "帮我看下工单 WO-20260816-0532 为什么资产分配失败",
+    "expected_scenario": "asset_allocation_failure",
+    "expected_responsible_party": "业务配置与权限",
+    "expected_root_cause_keywords": ["额度", "保护期", "权限"],
+    "expected_rounds": 2
+  },
+  {
+    "id": "intent_009",
+    "category": "intent",
+    "query": "WO-20260816-0532 有500天额度但分配100天提示余额不足",
+    "expected_scenario": "asset_allocation_failure",
+    "expected_responsible_party": "业务配置与权限",
+    "expected_root_cause_keywords": ["额度", "保护期", "权限"],
+    "expected_rounds": 2
+  },
+  {
+    "id": "intent_010",
+    "category": "intent",
+    "query": "北京朝阳换电站资产分配失败",
+    "expected_scenario": "asset_allocation_failure",
+    "expected_responsible_party": "业务配置与权限",
+    "expected_root_cause_keywords": ["额度", "保护期", "权限"],
+    "expected_rounds": 2
+  },
+  {
+    "id": "intent_011",
+    "category": "intent",
+    "query": "员工换电时长分配失败，工单 WO-20260816-0532",
+    "expected_scenario": "asset_allocation_failure",
+    "expected_responsible_party": "业务配置与权限",
+    "expected_root_cause_keywords": ["额度", "保护期", "权限"],
+    "expected_rounds": 2
+  },
+  {
+    "id": "intent_012",
+    "category": "intent",
+    "query": "请诊断 WO-20260816-0532 资产池额度问题",
+    "expected_scenario": "asset_allocation_failure",
+    "expected_responsible_party": "业务配置与权限",
+    "expected_root_cause_keywords": ["额度", "保护期", "权限"],
+    "expected_rounds": 2
+  },
+  {
+    "id": "intent_013",
+    "category": "intent",
+    "query": "WO-20260816-0532 跨商户分配报错",
+    "expected_scenario": "asset_allocation_failure",
+    "expected_responsible_party": "业务配置与权限",
+    "expected_root_cause_keywords": ["额度", "保护期", "权限"],
+    "expected_rounds": 2
+  },
+  {
+    "id": "intent_014",
+    "category": "intent",
+    "query": "请排查工单 WO-20260817-0611 的结算金额不符问题",
+    "expected_scenario": "settlement_amount_mismatch",
+    "expected_responsible_party": "数据侧（标签脚本）",
+    "expected_root_cause_keywords": ["标签", "分润比例", "规则不一致"],
+    "expected_rounds": 3
+  },
+  {
+    "id": "intent_015",
+    "category": "intent",
+    "query": "上海杨浦服务点结算少了3000块，合同是联营50%分润",
+    "expected_scenario": "settlement_amount_mismatch",
+    "expected_responsible_party": "数据侧（标签脚本）",
+    "expected_root_cause_keywords": ["标签", "分润比例", "规则不一致"],
+    "expected_rounds": 3
+  },
+  {
+    "id": "intent_016",
+    "category": "intent",
+    "query": "WO-20260817-0611 本月结算金额和合同对不上",
+    "expected_scenario": "settlement_amount_mismatch",
+    "expected_responsible_party": "数据侧（标签脚本）",
+    "expected_root_cause_keywords": ["标签", "分润比例", "规则不一致"],
+    "expected_rounds": 3
+  },
+  {
+    "id": "intent_017",
+    "category": "intent",
+    "query": "商户3052反馈结算金额不符",
+    "expected_scenario": "settlement_amount_mismatch",
+    "expected_responsible_party": "数据侧（标签脚本）",
+    "expected_root_cause_keywords": ["标签", "分润比例", "规则不一致"],
+    "expected_rounds": 3
+  },
+  {
+    "id": "intent_018",
+    "category": "intent",
+    "query": "帮我诊断 WO-20260817-0611 结算账单问题",
+    "expected_scenario": "settlement_amount_mismatch",
+    "expected_responsible_party": "数据侧（标签脚本）",
+    "expected_root_cause_keywords": ["标签", "分润比例", "规则不一致"],
+    "expected_rounds": 3
+  },
+  {
+    "id": "intent_019",
+    "category": "intent",
+    "query": "WO-20260817-0611 结算标签被脚本误刷",
+    "expected_scenario": "settlement_amount_mismatch",
+    "expected_responsible_party": "数据侧（标签脚本）",
+    "expected_root_cause_keywords": ["标签", "分润比例", "规则不一致"],
+    "expected_rounds": 3
+  },
+  {
+    "id": "intent_020",
+    "category": "intent",
+    "query": "排查 WO-20260817-0611 联营分润结算异常",
+    "expected_scenario": "settlement_amount_mismatch",
+    "expected_responsible_party": "数据侧（标签脚本）",
+    "expected_root_cause_keywords": ["标签", "分润比例", "规则不一致"],
+    "expected_rounds": 3
+  },
+  {
+    "id": "root_cause_001",
+    "category": "root_cause",
+    "query": "请诊断工单 WO-20260815-0421",
+    "expected_scenario": "order_status_anomaly",
+    "expected_responsible_party": "数据侧（后台脚本）",
+    "expected_root_cause_keywords": ["状态同步", "回调超时"],
+    "expected_rounds": 3
+  },
+  {
+    "id": "root_cause_002",
+    "category": "root_cause",
+    "query": "WO-20260815-0421 订单退款后状态没更新",
+    "expected_scenario": "order_status_anomaly",
+    "expected_responsible_party": "数据侧（后台脚本）",
+    "expected_root_cause_keywords": ["状态同步"],
+    "expected_rounds": 3
+  },
+  {
+    "id": "root_cause_003",
+    "category": "root_cause",
+    "query": "WO-20260815-0421 支付回调后订单状态同步超时",
+    "expected_scenario": "order_status_anomaly",
+    "expected_responsible_party": "数据侧（后台脚本）",
+    "expected_root_cause_keywords": ["回调超时"],
+    "expected_rounds": 3
+  },
+  {
+    "id": "root_cause_004",
+    "category": "root_cause",
+    "query": "商户2037订单ORD-8823状态异常根因是什么",
+    "expected_scenario": "order_status_anomaly",
+    "expected_responsible_party": "数据侧（后台脚本）",
+    "expected_root_cause_keywords": ["数据同步"],
+    "expected_rounds": 3
+  },
+  {
+    "id": "root_cause_005",
+    "category": "root_cause",
+    "query": "帮我看下工单 WO-20260816-0532 为什么资产分配失败",
+    "expected_scenario": "asset_allocation_failure",
+    "expected_responsible_party": "业务配置与权限",
+    "expected_root_cause_keywords": ["额度", "保护期", "权限"],
+    "expected_rounds": 2
+  },
+  {
+    "id": "root_cause_006",
+    "category": "root_cause",
+    "query": "WO-20260816-0532 可用额度只有20天但申请100天",
+    "expected_scenario": "asset_allocation_failure",
+    "expected_responsible_party": "业务配置与权限",
+    "expected_root_cause_keywords": ["可用额度", "申请额度"],
+    "expected_rounds": 2
+  },
+  {
+    "id": "root_cause_007",
+    "category": "root_cause",
+    "query": "WO-20260816-0532 用户仍绑定其他商户且保护期有效",
+    "expected_scenario": "asset_allocation_failure",
+    "expected_responsible_party": "业务配置与权限",
+    "expected_root_cause_keywords": ["保护期", "绑定"],
+    "expected_rounds": 2
+  },
+  {
+    "id": "root_cause_008",
+    "category": "root_cause",
+    "query": "WO-20260816-0532 没有跨商户分配权限",
+    "expected_scenario": "asset_allocation_failure",
+    "expected_responsible_party": "业务配置与权限",
+    "expected_root_cause_keywords": ["权限"],
+    "expected_rounds": 2
+  },
+  {
+    "id": "root_cause_009",
+    "category": "root_cause",
+    "query": "请排查工单 WO-20260817-0611 的结算金额不符问题",
+    "expected_scenario": "settlement_amount_mismatch",
+    "expected_responsible_party": "数据侧（标签脚本）",
+    "expected_root_cause_keywords": ["标签", "分润比例"],
+    "expected_rounds": 3
+  },
+  {
+    "id": "root_cause_010",
+    "category": "root_cause",
+    "query": "WO-20260817-0611 结算标签被脚本误刷",
+    "expected_scenario": "settlement_amount_mismatch",
+    "expected_responsible_party": "数据侧（标签脚本）",
+    "expected_root_cause_keywords": ["标签脚本"],
+    "expected_rounds": 3
+  },
+  {
+    "id": "root_cause_011",
+    "category": "root_cause",
+    "query": "WO-20260817-0611 按错误分润比例结算",
+    "expected_scenario": "settlement_amount_mismatch",
+    "expected_responsible_party": "数据侧（标签脚本）",
+    "expected_root_cause_keywords": ["分润比例"],
+    "expected_rounds": 3
+  },
+  {
+    "id": "root_cause_012",
+    "category": "root_cause",
+    "query": "WO-20260817-0611 数据标签与规则不一致",
+    "expected_scenario": "settlement_amount_mismatch",
+    "expected_responsible_party": "数据侧（标签脚本）",
+    "expected_root_cause_keywords": ["规则不一致"],
+    "expected_rounds": 3
+  },
+  {
+    "id": "attribution_001",
+    "category": "attribution",
+    "query": "请诊断工单 WO-20260815-0421",
+    "expected_scenario": "order_status_anomaly",
+    "expected_responsible_party": "数据侧（后台脚本）",
+    "expected_root_cause_keywords": ["状态同步", "回调超时"],
+    "expected_rounds": 3
+  },
+  {
+    "id": "attribution_002",
+    "category": "attribution",
+    "query": "WO-20260815-0421 这笔订单状态异常该找谁负责",
+    "expected_scenario": "order_status_anomaly",
+    "expected_responsible_party": "数据侧（后台脚本）",
+    "expected_root_cause_keywords": ["状态同步", "回调超时"],
+    "expected_rounds": 3
+  },
+  {
+    "id": "attribution_003",
+    "category": "attribution",
+    "query": "商户2037订单状态未更新是谁的责任",
+    "expected_scenario": "order_status_anomaly",
+    "expected_responsible_party": "数据侧（后台脚本）",
+    "expected_root_cause_keywords": ["状态同步", "回调超时"],
+    "expected_rounds": 3
+  },
+  {
+    "id": "attribution_004",
+    "category": "attribution",
+    "query": "WO-20260815-0421 退款回调后订单状态同步任务超时责任方",
+    "expected_scenario": "order_status_anomaly",
+    "expected_responsible_party": "数据侧（后台脚本）",
+    "expected_root_cause_keywords": ["状态同步", "回调超时"],
+    "expected_rounds": 3
+  },
+  {
+    "id": "attribution_005",
+    "category": "attribution",
+    "query": "帮我看下工单 WO-20260816-0532 为什么资产分配失败",
+    "expected_scenario": "asset_allocation_failure",
+    "expected_responsible_party": "业务配置与权限",
+    "expected_root_cause_keywords": ["额度", "保护期", "权限"],
+    "expected_rounds": 2
+  },
+  {
+    "id": "attribution_006",
+    "category": "attribution",
+    "query": "WO-20260816-0532 资产分配失败责任在哪边",
+    "expected_scenario": "asset_allocation_failure",
+    "expected_responsible_party": "业务配置与权限",
+    "expected_root_cause_keywords": ["额度", "保护期", "权限"],
+    "expected_rounds": 2
+  },
+  {
+    "id": "attribution_007",
+    "category": "attribution",
+    "query": "WO-20260816-0532 额度保护期权限三重限制该谁处理",
+    "expected_scenario": "asset_allocation_failure",
+    "expected_responsible_party": "业务配置与权限",
+    "expected_root_cause_keywords": ["额度", "保护期", "权限"],
+    "expected_rounds": 2
+  },
+  {
+    "id": "attribution_008",
+    "category": "attribution",
+    "query": "WO-20260816-0532 没有跨商户分配权限是谁的责任",
+    "expected_scenario": "asset_allocation_failure",
+    "expected_responsible_party": "业务配置与权限",
+    "expected_root_cause_keywords": ["额度", "保护期", "权限"],
+    "expected_rounds": 2
+  },
+  {
+    "id": "attribution_009",
+    "category": "attribution",
+    "query": "请排查工单 WO-20260817-0611 的结算金额不符问题",
+    "expected_scenario": "settlement_amount_mismatch",
+    "expected_responsible_party": "数据侧（标签脚本）",
+    "expected_root_cause_keywords": ["标签", "分润比例", "规则不一致"],
+    "expected_rounds": 3
+  },
+  {
+    "id": "attribution_010",
+    "category": "attribution",
+    "query": "WO-20260817-0611 结算少了3000块该找谁",
+    "expected_scenario": "settlement_amount_mismatch",
+    "expected_responsible_party": "数据侧（标签脚本）",
+    "expected_root_cause_keywords": ["标签", "分润比例", "规则不一致"],
+    "expected_rounds": 3
+  },
+  {
+    "id": "attribution_011",
+    "category": "attribution",
+    "query": "WO-20260817-0611 结算标签被误刷责任归属",
+    "expected_scenario": "settlement_amount_mismatch",
+    "expected_responsible_party": "数据侧（标签脚本）",
+    "expected_root_cause_keywords": ["标签", "分润比例", "规则不一致"],
+    "expected_rounds": 3
+  },
+  {
+    "id": "attribution_012",
+    "category": "attribution",
+    "query": "WO-20260817-0611 分润比例结算错误是谁的问题",
+    "expected_scenario": "settlement_amount_mismatch",
+    "expected_responsible_party": "数据侧（标签脚本）",
+    "expected_root_cause_keywords": ["标签", "分润比例", "规则不一致"],
+    "expected_rounds": 3
+  }
+]

@@ -14,11 +14,8 @@ from agents.intention_agent import IntentionAgent
 from agents.lazy_agent_registry import LazyAgentRegistry
 from agents.loop_decider import LoopDecider
 from agents.orchestration_agent import OrchestrationAgent
-from agents.code_agent import CodeAgent
-from agents.operation_agent import OperationAgent
-from agents.data_agent import DataAgent
-from agents.resolution_agent import ResolutionAgent
 from context.long_term_memory import LongTermMemory
+from context.memory_manager import MemoryManager
 from skills.registry import SkillRegistry
 from utils.logging_config import set_trace_id
 from utils.trace_collector import TraceCollector, format_trace_sse
@@ -44,6 +41,14 @@ class TraceRepository:
 class DiagnosisService:
     """小哈工单智能诊断助手的核心执行入口。"""
 
+    # 专业 Agent 名称，用于 metrics 统计
+    PROFESSIONAL_AGENTS = [
+        "CodeAgent",
+        "OperationAgent",
+        "DataAgent",
+        "ResolutionAgent",
+    ]
+
     def __init__(
         self,
         trace_repo: Optional[TraceRepository] = None,
@@ -52,32 +57,37 @@ class DiagnosisService:
     ):
         self.trace_repo = trace_repo or TraceRepository()
         self.skill_registry = SkillRegistry()
-        self._agent_cache: Dict[str, Any] = {}
-        self.agent_registry = LazyAgentRegistry(
-            model=None,
-            cache=self._agent_cache,
-            memory_manager=None,
-            custom_factories={
-                "CodeAgent": lambda: CodeAgent(name="CodeAgent", skill_registry=self.skill_registry),
-                "OperationAgent": lambda: OperationAgent(name="OperationAgent", skill_registry=self.skill_registry),
-                "DataAgent": lambda: DataAgent(name="DataAgent", skill_registry=self.skill_registry),
-                "ResolutionAgent": lambda: ResolutionAgent(name="ResolutionAgent", skill_registry=self.skill_registry),
-            },
-        )
-        self.intention_agent = IntentionAgent(name="IntentionAgent")
-        self.orchestrator = OrchestrationAgent(
-            name="DiagnosisOrchestrationAgent",
-            agent_registry=self.agent_registry,
-            memory_manager=None,
-        )
         self.loop_decider = LoopDecider(max_rounds=3)
+        self.user_id = user_id
+        self.storage_path = storage_path
+        # 保留长期记忆实例，供 CLI 的 history/status/clear 命令兼容访问
         self.long_term_memory = LongTermMemory(user_id=user_id, storage_path=storage_path)
 
-    async def diagnose(self, query: str) -> Dict[str, Any]:
+    async def diagnose(
+        self,
+        query: str,
+        user_id: Optional[str] = None,
+        session_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
         trace_id = str(uuid.uuid4())[:8]
         set_trace_id(trace_id)
 
+        effective_user_id = user_id or self.user_id
+        effective_session_id = session_id or str(uuid.uuid4())[:8]
+
+        # 创建本次诊断专属的三层记忆管理器
+        memory_manager = MemoryManager(
+            user_id=effective_user_id,
+            session_id=effective_session_id,
+            storage_path=self.storage_path,
+        )
+        # 记录用户提问到短期记忆和长期聊天历史
+        memory_manager.add_message("user", query, metadata={"trace_id": trace_id})
+
         ticket = await self._load_ticket_context(query)
+        if ticket.get("merchant_id"):
+            memory_manager.set_merchant_id(ticket.get("merchant_id"))
+
         state = {
             "query": query,
             "ticket": ticket,
@@ -92,24 +102,56 @@ class DiagnosisService:
         }
         trace = TraceCollector(ticket_id=ticket.get("ticket_id", ""))
 
+        # 每次诊断都创建新的 Agent 链，避免并发状态竞争
+        # 专业 Agent 从 .claude/skills/ 插件目录懒加载，通过 agent_kwargs 注入依赖
+        agent_registry = LazyAgentRegistry(
+            model=None,
+            cache={},
+            memory_manager=memory_manager,
+            agent_kwargs={
+                "skill_registry": self.skill_registry,
+            },
+        )
+        intention_agent = IntentionAgent(name="IntentionAgent")
+        orchestrator = OrchestrationAgent(
+            name="DiagnosisOrchestrationAgent",
+            agent_registry=agent_registry,
+            memory_manager=memory_manager,
+        )
+
         final_decision = "done"
         for round_num in range(1, self.loop_decider.max_rounds + 1):
+            # 组装记忆上下文，供 IntentionAgent 丰富意图理解
+            memory_context = {
+                "recent_dialogue": memory_manager.short_term.get_context_string(3),
+                "merchant_profile": memory_manager.get_merchant_context(),
+                "similar_patterns": await memory_manager.find_similar_patterns(query),
+            }
             intention_payload = {
                 "query": query,
                 "ticket": state.get("ticket", {}),
                 "collected_data": state.get("collected_data", {}),
                 "round_num": round_num,
+                "memory_context": memory_context,
             }
             intention_msg = Msg(
                 name="user",
                 content=json.dumps(intention_payload, ensure_ascii=False),
                 role="user",
             )
-            intention_result = await self.intention_agent.reply(intention_msg)
+            intention_result = await intention_agent.reply(intention_msg)
             intention_data = json.loads(intention_result.content)
 
+            # 若 intention 解析出 merchant_id，也同步到记忆系统
+            intention_merchant_id = (
+                intention_data.get("key_entities", {}).get("merchant_id")
+                or intention_data.get("ticket", {}).get("merchant_id")
+            )
+            if intention_merchant_id:
+                memory_manager.set_merchant_id(intention_merchant_id)
+
             trace.start_round(round_num, intent=intention_data.get("intent", ""))
-            orchestration_result = await self.orchestrator.reply(intention_result)
+            orchestration_result = await orchestrator.reply(intention_result)
             round_result = json.loads(orchestration_result.content)
 
             self._record_trace(trace, round_result)
@@ -130,7 +172,30 @@ class DiagnosisService:
                 "events": format_trace_sse(trace.get_trace()),
             },
         )
-        self._save_diagnosis_history(diagnosis, state)
+
+        # 记录助手回复到短期/长期记忆
+        diagnosis_summary = (diagnosis.get("diagnosis") or {}).get("summary", "")
+        memory_manager.add_message(
+            "assistant",
+            diagnosis_summary,
+            metadata={"trace_id": trace_id},
+        )
+
+        # 统一写入三层记忆
+        facts = (state.get("collected_data", {}) or {}).get("facts", {})
+        await memory_manager.record_diagnosis({
+            "trace_id": trace_id,
+            "ticket_id": diagnosis.get("ticket_id", ""),
+            "merchant_id": facts.get("merchant_id", ""),
+            "issue_type": facts.get("issue_type", ""),
+            "scenario": diagnosis.get("scenario", ""),
+            "summary": diagnosis_summary,
+            "responsible_party": (diagnosis.get("diagnosis") or {}).get("responsible_party", ""),
+            "root_cause": (diagnosis.get("diagnosis") or {}).get("root_cause", ""),
+            "query": state.get("query", ""),
+            "status": diagnosis.get("status", "completed"),
+        })
+
         return diagnosis
 
     async def get_trace(self, trace_id: str) -> Optional[Dict[str, Any]]:
@@ -150,7 +215,7 @@ class DiagnosisService:
         return {
             "trace_count": self.trace_repo.count(),
             "max_rounds": self.loop_decider.max_rounds,
-            "registered_agents": len(list(self.orchestrator.agent_registry.keys())),
+            "registered_agents": len(self.PROFESSIONAL_AGENTS),
             "registered_skills": len(list(self.skill_registry.keys())),
             "total_diagnoses": stats.get("total_diagnoses", 0),
         }
@@ -291,22 +356,6 @@ class DiagnosisService:
                 "补充重试和告警机制",
             ]
         return resolver
-
-    def _save_diagnosis_history(self, diagnosis: Dict[str, Any], state: Dict[str, Any]):
-        facts = (state.get("collected_data", {}) or {}).get("facts", {})
-        diagnosis_payload = diagnosis.get("diagnosis", {})
-        self.long_term_memory.save_diagnosis_history({
-            "trace_id": diagnosis.get("trace_id"),
-            "ticket_id": diagnosis.get("ticket_id", ""),
-            "merchant_id": facts.get("merchant_id", ""),
-            "issue_type": facts.get("issue_type", ""),
-            "scenario": diagnosis.get("scenario", ""),
-            "summary": diagnosis_payload.get("summary", ""),
-            "responsible_party": diagnosis_payload.get("responsible_party", ""),
-            "root_cause": diagnosis_payload.get("root_cause", ""),
-            "query": state.get("query", ""),
-            "status": diagnosis.get("status", "completed"),
-        })
 
     def _extract(self, text: str, pattern: str) -> str:
         matched = re.search(pattern, text or "")

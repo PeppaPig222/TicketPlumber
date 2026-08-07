@@ -23,14 +23,18 @@ class DiagnosisIntentionAgent:
         query = payload.get("query", "")
         ticket = await self._enrich_ticket(payload.get("ticket", {}) or {}, query)
         collected_data = payload.get("collected_data", {}) or {}
+        memory_context = payload.get("memory_context", {}) or {}
 
         key_entities = self._build_entities(query, ticket, collected_data)
         scenario = key_entities.get("scenario")
         issue_type = key_entities.get("issue_type")
 
+        base_reasoning = self._build_reasoning(round_num, scenario, issue_type)
+        enriched_reasoning = self._enrich_reasoning_with_memory(base_reasoning, memory_context)
+
         intention = {
             "intent": self._intent_name(round_num),
-            "reasoning": self._build_reasoning(round_num, scenario, issue_type),
+            "reasoning": enriched_reasoning,
             "intents": [
                 {
                     "type": "ticket_diagnosis",
@@ -105,6 +109,32 @@ class DiagnosisIntentionAgent:
             "settlement_amount_mismatch": "结算金额不符场景",
         }
         return f"{stage_text.get(round_num, '继续诊断')} 当前识别为 {scenario_text.get(scenario, '未知工单场景')}，问题类型：{issue_type or '待补充'}。"
+
+    def _enrich_reasoning_with_memory(
+        self, base_reasoning: str, memory_context: Dict[str, Any]
+    ) -> str:
+        """把记忆上下文追加到 reasoning，仅用于丰富意图理解，不改动 scenario/调度。"""
+        extras: List[str] = []
+
+        recent_dialogue = memory_context.get("recent_dialogue", "")
+        if recent_dialogue:
+            extras.append(f"近期对话：{recent_dialogue}")
+
+        merchant_profile = memory_context.get("merchant_profile", "")
+        if merchant_profile:
+            extras.append(f"商户画像：{merchant_profile}")
+
+        similar_patterns = memory_context.get("similar_patterns", [])
+        if similar_patterns:
+            summaries = [
+                p.get("summary", "") or p.get("pattern", "")
+                for p in similar_patterns[:2]
+            ]
+            extras.append(f"相似历史模式：{'; '.join(s for s in summaries if s)}")
+
+        if not extras:
+            return base_reasoning
+        return base_reasoning + " [记忆上下文] " + " | ".join(extras)
 
     def _build_schedule(self, scenario: str, round_num: int) -> List[Dict[str, Any]]:
         schedules = {

@@ -85,6 +85,35 @@ class MemoryManager:
     # ========== 长期记忆操作 ==========
     # 注意：大部分方法直接使用 self.short_term 和 self.long_term 即可，无需封装
 
+    def set_merchant_id(self, merchant_id: str):
+        """
+        延迟设置/切换商户号，用于 ticket 加载后创建商户画像
+
+        Args:
+            merchant_id: 商户ID
+        """
+        if not merchant_id:
+            return
+        if self.merchant_id == merchant_id and self.merchant_profile is not None:
+            return
+
+        self.merchant_id = merchant_id
+        self.merchant_profile = MerchantProfileStore(
+            merchant_id, self.long_term.storage_path
+        )
+        logger.info(f"Memory manager switched to merchant: {merchant_id}")
+
+    def get_merchant_context(self) -> str:
+        """
+        获取用于 Agent prompt 的商户画像文本
+
+        Returns:
+            格式化字符串，未初始化时返回空字符串
+        """
+        if self.merchant_profile is None:
+            return ""
+        return self.merchant_profile.get_context_for_agent()
+
     # ========== 综合查询 ==========
 
     def get_full_context(self) -> Dict[str, Any]:
