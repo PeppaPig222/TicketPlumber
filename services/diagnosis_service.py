@@ -4,12 +4,15 @@
 工单诊断服务：串起 IntentionAgent、OrchestrationAgent、LoopDecider 与 TraceCollector。
 """
 import json
+import logging
 import re
 import sys
 import uuid
 from typing import Any, Dict, List, Optional
 
 from agentscope.message import Msg
+
+logger = logging.getLogger(__name__)
 
 from agents.intention_agent import IntentionAgent
 from agents.lazy_agent_registry import LazyAgentRegistry
@@ -144,8 +147,18 @@ class DiagnosisService:
                 content=json.dumps(intention_payload, ensure_ascii=False),
                 role="user",
             )
-            intention_result = await intention_agent.reply(intention_msg)
-            intention_data = json.loads(intention_result.content)
+            try:
+                intention_result = await intention_agent.reply(intention_msg)
+                intention_data = json.loads(intention_result.content)
+            except Exception as e:
+                logger.error(f"IntentionAgent failed in round {round_num}: {e}")
+                # 回退到规则调度：使用通用诊断意图
+                intention_data = self._fallback_intention(round_num, query, state)
+                intention_result = Msg(
+                    name="IntentionAgent",
+                    content=json.dumps(intention_data, ensure_ascii=False),
+                    role="assistant",
+                )
 
             # 若 intention 解析出 merchant_id，也同步到记忆系统
             intention_merchant_id = (
@@ -156,8 +169,13 @@ class DiagnosisService:
                 memory_manager.set_merchant_id(intention_merchant_id)
 
             trace.start_round(round_num, intent=intention_data.get("intent", ""))
-            orchestration_result = await orchestrator.reply(intention_result)
-            round_result = json.loads(orchestration_result.content)
+
+            try:
+                orchestration_result = await orchestrator.reply(intention_result)
+                round_result = json.loads(orchestration_result.content)
+            except Exception as e:
+                logger.error(f"OrchestrationAgent failed in round {round_num}: {e}")
+                round_result = self._fallback_round_result(round_num, e)
 
             self._record_trace(trace, round_result)
             self._merge_round_result(state, intention_data, round_result)
@@ -235,15 +253,102 @@ class DiagnosisService:
             return ticket_result.get("data", {})
         return {}
 
+    def _fallback_intention(self, round_num: int, query: str, state: Dict[str, Any]) -> Dict[str, Any]:
+        """IntentionAgent 失败时的规则回退意图。"""
+        scenario = (
+            state.get("collected_data", {}).get("facts", {}).get("scenario")
+            or "generic_ticket_diagnosis"
+        )
+        return {
+            "intent": "ticket_diagnosis",
+            "reasoning": f"第{round_num}轮意图识别失败，回退到规则调度",
+            "intents": [
+                {
+                    "type": "ticket_diagnosis",
+                    "confidence": 0.5,
+                    "description": "回退诊断",
+                    "reason": "IntentionAgent 异常，使用规则兜底",
+                }
+            ],
+            "key_entities": state.get("collected_data", {}).get("facts", {}),
+            "rewritten_query": query,
+            "scenario": scenario,
+            "ticket": state.get("ticket", {}),
+            "round_num": round_num,
+            "query": query,
+            "collected_data": state.get("collected_data", {}),
+            "agent_schedule": [
+                {
+                    "agent_name": "CodeAgent",
+                    "priority": 1,
+                    "reason": "规则兜底调度",
+                    "expected_output": "技术侧线索",
+                },
+                {
+                    "agent_name": "OperationAgent",
+                    "priority": 1,
+                    "reason": "规则兜底调度",
+                    "expected_output": "操作侧线索",
+                },
+                {
+                    "agent_name": "DataAgent",
+                    "priority": 1,
+                    "reason": "规则兜底调度",
+                    "expected_output": "数据侧线索",
+                },
+                {
+                    "agent_name": "ResolutionAgent",
+                    "priority": 2,
+                    "reason": "规则兜底调度",
+                    "expected_output": "归因建议",
+                },
+            ],
+        }
+
+    def _fallback_round_result(self, round_num: int, error: Exception) -> Dict[str, Any]:
+        """OrchestrationAgent 失败时的部分结果。"""
+        return {
+            "status": "partial_failure",
+            "errors": 1,
+            "agents_executed": 0,
+            "results": [
+                {
+                    "agent_name": "OrchestrationAgent",
+                    "priority": 0,
+                    "status": "degraded",
+                    "data": {"error": str(error)},
+                    "summary": f"第{round_num}轮编排失败，已降级并继续诊断",
+                    "duration_ms": 0,
+                    "tools_called": [],
+                    "recommended_skills": [],
+                    "evidence": [str(error)],
+                    "next_actions": ["检查 Agent 配置或日志"],
+                }
+            ],
+        }
+
     def _record_trace(self, trace: TraceCollector, round_result: Dict[str, Any]):
+        overall_status = round_result.get("status", "unknown")
+        has_errors = round_result.get("errors", 0) > 0 or overall_status in {
+            "partial_failure",
+            "error",
+        }
+
         for result in round_result.get("results", []):
+            agent_status = result.get("status", "unknown")
+            tools_called = result.get("tools_called", [])
+
+            # 如果整轮失败或单个 agent 失败/超时，标记为 degraded
+            if has_errors or agent_status in {"error", "timeout"}:
+                agent_status = "degraded"
+
             trace.record_agent(
                 agent_name=result.get("agent_name", ""),
                 priority=result.get("priority", 0),
-                status=result.get("status", "unknown"),
+                status=agent_status,
                 duration_ms=result.get("duration_ms") or 0,
                 output_summary=result.get("summary", ""),
-                tools_called=result.get("tools_called", []),
+                tools_called=tools_called,
                 recommended_skills=result.get("recommended_skills", []),
                 evidence=result.get("evidence", []),
             )
@@ -265,7 +370,7 @@ class DiagnosisService:
         for result in round_result.get("results", []):
             data = result.get("data", {}) or {}
             for key, value in data.items():
-                if key in {"duration_ms", "tools_called", "summary", "status", "recommended_skills", "next_actions"}:
+                if key in {"duration_ms", "tools_called", "summary", "status", "recommended_skills", "next_actions", "error"}:
                     continue
                 facts[key] = value
 

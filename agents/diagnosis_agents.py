@@ -52,6 +52,29 @@ def _safe_summary(lines: List[str]) -> str:
     return "；".join([line for line in lines if line])
 
 
+# ---------- Batch 3.2：降级策略辅助函数 ----------
+
+def _is_degraded(result: Any) -> bool:
+    """判断工具执行结果是否为失败/超时/降级状态。"""
+    if not isinstance(result, dict):
+        return False
+    return result.get("status") in {"error", "timeout"}
+
+
+def _tool_label(tool_name: str, result: Dict[str, Any]) -> str:
+    """在 tools_called 中标注降级状态，如 query_order(timeout)。"""
+    status = result.get("status")
+    if status in {"error", "timeout"}:
+        return f"{tool_name}({status})"
+    return tool_name
+
+
+def _degraded_summary(tool_name: str, fallback: str = "") -> str:
+    """生成降级提示文本。"""
+    base = f"[{tool_name} 已降级]"
+    return f"{base} {fallback}".strip() if fallback else base
+
+
 class DiagnosticAgent:
     """轻量诊断 Agent，兼容现有 OrchestrationAgent 的调用协议。"""
 
@@ -125,12 +148,18 @@ async def run_search_history_ticket(context: Dict[str, Any], registry) -> Dict[s
     merchant_id = _context_value(context, "merchant_id")
     issue_type = _context_value(context, "issue_type") or context.get("scenario") or "工单诊断"
     result = await registry.execute("search_kb", query=issue_type, merchant_id=merchant_id)
+    if _is_degraded(result):
+        return {
+            "history_matches": [],
+            "summary": _degraded_summary("search_kb", "知识库不可用，已降级为纯业务证据"),
+            "tools_called": [_tool_label("search_kb", result)],
+        }
     matches = result.get("data", [])
     top = matches[0] if matches else {}
     return {
         "history_matches": matches,
         "summary": top.get("summary", "未命中历史工单经验"),
-        "tools_called": ["search_kb"],
+        "tools_called": [_tool_label("search_kb", result)],
     }
 
 
@@ -215,22 +244,40 @@ async def run_order_code_path(context: Dict[str, Any], registry) -> Dict[str, An
     merchant_id = _context_value(context, "merchant_id")
     logs = await registry.execute("trace_api", api_path="/api/refund/callback", order_id=order_id)
     config = await registry.execute("check_config", merchant_id=merchant_id)
-    log_items = logs.get("data", [])
-    config_data = config.get("data", {})
-    has_success = any(item.get("status_code") == 200 for item in log_items)
+
+    log_degraded = _is_degraded(logs)
+    config_degraded = _is_degraded(config)
+    log_items = [] if log_degraded else logs.get("data", [])
+    config_data = {} if config_degraded else config.get("data", {})
+    has_success = any(item.get("status_code") == 200 for item in log_items) if not log_degraded else False
+
+    summary_lines = []
+    if log_degraded:
+        summary_lines.append("日志检索超时/失败，已降级为配置检查")
+    else:
+        summary_lines.append(f"退款回调日志 {len(log_items)} 条")
+        summary_lines.append("回调链路返回过 200" if has_success else "未见成功回调")
+
+    if config_degraded:
+        summary_lines.append("配置检查不可用")
+    else:
+        summary_lines.append("退款开关已开启" if config_data.get("refund_enabled") else "退款开关异常")
+
+    # 日志不可用时，如果配置检查通过，仍认为代码链路大概率正常
+    if log_degraded and not config_degraded and config_data.get("refund_enabled"):
+        path_verdict = "代码链路无明显异常（日志缺失，基于配置推断）"
+    else:
+        path_verdict = "代码链路无明显异常" if has_success and config_data.get("refund_enabled") else "需进一步排查代码链路"
+
     return {
         "path": "code",
-        "path_verdict": "代码链路无明显异常" if has_success and config_data.get("refund_enabled") else "需进一步排查代码链路",
+        "path_verdict": path_verdict,
         "code_path_detail": {
             "logs": log_items,
             "config": config_data,
         },
-        "summary": _safe_summary([
-            f"退款回调日志 {len(log_items)} 条",
-            "回调链路返回过 200" if has_success else "未见成功回调",
-            "退款开关已开启" if config_data.get("refund_enabled") else "退款开关异常",
-        ]),
-        "tools_called": ["trace_api", "check_config"],
+        "summary": _safe_summary(summary_lines),
+        "tools_called": [_tool_label("trace_api", logs), _tool_label("check_config", config)],
     }
 
 
@@ -255,22 +302,37 @@ async def run_order_data_path(context: Dict[str, Any], registry) -> Dict[str, An
     order_id = _context_value(context, "order_id")
     snapshot = await registry.execute("check_data", order_id=order_id)
     logs = await registry.execute("trace_api", api_path="/api/refund/callback", order_id=order_id)
-    inconsistencies = snapshot.get("inconsistencies", [])
-    has_timeout = any(item.get("status_code") == 505 for item in logs.get("data", []))
+
+    snapshot_degraded = _is_degraded(snapshot)
+    logs_degraded = _is_degraded(logs)
+
+    snapshot_data = {} if snapshot_degraded else snapshot.get("data", {})
+    inconsistencies = [] if snapshot_degraded else snapshot.get("inconsistencies", [])
+    log_items = [] if logs_degraded else logs.get("data", [])
+    has_timeout = any(item.get("status_code") == 505 for item in log_items) if not logs_degraded else False
+
+    summary_lines = []
+    if snapshot_degraded:
+        summary_lines.append("跨表快照不可用，数据路径证据降级")
+    else:
+        summary_lines.append(snapshot.get("verdict", "未完成跨表校验"))
+
+    if logs_degraded:
+        summary_lines.append("日志检索不可用，无法判断回调超时")
+    elif has_timeout:
+        summary_lines.append("发现订单状态同步超时")
+
     return {
         "path": "data",
         "path_verdict": "支付表与订单表状态不一致" if inconsistencies else "未发现跨表不一致",
         "data_path_detail": {
-            "snapshot": snapshot.get("data", {}),
+            "snapshot": snapshot_data,
             "inconsistencies": inconsistencies,
-            "logs": logs.get("data", []),
+            "logs": log_items,
         },
         "inconsistency_found": bool(inconsistencies or has_timeout),
-        "summary": _safe_summary([
-            snapshot.get("verdict", "未完成跨表校验"),
-            "发现订单状态同步超时" if has_timeout else "",
-        ]),
-        "tools_called": ["check_data", "trace_api"],
+        "summary": _safe_summary(summary_lines),
+        "tools_called": [_tool_label("check_data", snapshot), _tool_label("trace_api", logs)],
     }
 
 
@@ -382,12 +444,18 @@ async def run_search_policy_faq(context: Dict[str, Any], registry) -> Dict[str, 
         query=f"{issue_type} 处理建议 根因",
         merchant_id=_context_value(context, "merchant_id"),
     )
+    if _is_degraded(result):
+        return {
+            "policy_matches": [],
+            "summary": _degraded_summary("search_kb", "政策/FAQ 检索不可用，已降级为纯业务证据"),
+            "tools_called": [_tool_label("search_kb", result)],
+        }
     matches = result.get("data", [])
     top = matches[0] if matches else {}
     return {
         "policy_matches": matches,
         "summary": top.get("resolution", "未命中处理建议"),
-        "tools_called": ["search_kb"],
+        "tools_called": [_tool_label("search_kb", result)],
     }
 
 

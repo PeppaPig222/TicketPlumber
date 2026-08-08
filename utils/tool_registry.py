@@ -5,11 +5,14 @@
 管理工单诊断场景的 9 个核心诊断工具
 对应 30 个原子 Skill 的数据源适配层
 """
+import asyncio
 import json
 import logging
 from pathlib import Path
 from typing import Dict, Any, Callable, Coroutine
 import re
+
+from config import RESILIENCE_CONFIG
 
 logger = logging.getLogger(__name__)
 
@@ -225,17 +228,48 @@ class ToolRegistry:
         return list(self._tools.keys())
 
     async def execute(self, name: str, **kwargs) -> Dict[str, Any]:
-        """执行工具调用"""
+        """执行工具调用，支持超时与统一降级返回格式。"""
         if name not in self._tools:
             logger.error(f"Tool not found: {name}")
-            return {"error": f"工具 {name} 不存在", "available": self.get_tool_names()}
+            return {
+                "status": "error",
+                "tool": name,
+                "message": f"工具 {name} 不存在",
+                "data": {"available": self.get_tool_names()},
+            }
+
+        timeout = RESILIENCE_CONFIG.get("skill_timeout_sec", 5.0)
+        handler = self._tools[name]["handler"]
+
         try:
-            handler = self._tools[name]["handler"]
-            result = await handler(**kwargs)
+            result = await asyncio.wait_for(handler(**kwargs), timeout=timeout)
+            # 对老代码兼容：如果 handler 返回的是不带 status 的字典，默认视为 success
+            if isinstance(result, dict) and "status" not in result and "error" not in result:
+                return {"status": "success", **result}
+            if isinstance(result, dict) and "error" in result and "status" not in result:
+                return {
+                    "status": "error",
+                    "tool": name,
+                    "message": str(result.get("error")),
+                    "data": result,
+                }
             return result
+        except asyncio.TimeoutError:
+            logger.warning(f"Tool {name} execution timed out after {timeout}s")
+            return {
+                "status": "timeout",
+                "tool": name,
+                "message": f"工具 {name} 执行超时（{timeout}秒）",
+                "data": {},
+            }
         except Exception as e:
             logger.error(f"Tool {name} execution failed: {e}")
-            return {"error": str(e), "tool": name}
+            return {
+                "status": "error",
+                "tool": name,
+                "message": str(e),
+                "data": {},
+            }
 
 
 # 全局单例

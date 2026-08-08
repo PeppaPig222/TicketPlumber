@@ -46,4 +46,5 @@ RESILIENCE_CONFIG = {
     "circuit_recovery_timeout_sec": 60.0,  # 熔断后多少秒进入半开
     "circuit_half_open_successes": 2,      # 半开状态下连续成功多少次后关闭
     "health_check_timeout_sec": 10.0,      # 健康检查请求超时（秒）
+    "skill_timeout_sec": 5.0,              # 单个 Skill 工具执行超时（秒）
 }
