@@ -9,7 +9,9 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, Header, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
@@ -22,6 +24,20 @@ trace_repo = TraceRepository()
 # 默认 service 用于 /metrics，避免 per-request 实例统计失真
 default_diagnosis_service = DiagnosisService(trace_repo=trace_repo)
 WEB_INDEX = Path(__file__).resolve().parent.parent / "web" / "index.html"
+FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
+
+# 开发时允许前端独立服务跨域访问
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# 如果已构建 React 面板，则挂载到 /panel
+if FRONTEND_DIST.exists():
+    app.mount("/panel", StaticFiles(directory=str(FRONTEND_DIST), html=True))
 
 
 class DiagnoseRequest(BaseModel):
