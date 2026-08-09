@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { diagnose, streamTrace, agentUpdateToNode } from "./api";
 import type { DiagnosisResult, Round, SSEEvent } from "./types";
 import AgentTimeline from "./components/AgentTimeline";
@@ -19,6 +19,16 @@ export default function App() {
   const [liveRounds, setLiveRounds] = useState<Round[]>([]);
   const [streaming, setStreaming] = useState(false);
   const cleanupRef = useRef<(() => void) | null>(null);
+
+  // 组件卸载时关闭 SSE 连接
+  useEffect(() => {
+    return () => {
+      if (cleanupRef.current) {
+        cleanupRef.current();
+        cleanupRef.current = null;
+      }
+    };
+  }, []);
 
   const reset = useCallback(() => {
     setError(null);
