@@ -34,8 +34,8 @@
 - [ ] 完整调度策略矩阵与降级策略
 - [ ] React + TypeScript + SSE 实时诊断追踪面板
 - [x] 正式 RAG 知识库，而不是 mock keyword 检索
-- [ ] 工程化完整版：`pydantic-settings` / Docker / 全局结构化日志接线
-- [x] 离线评测体系与评测数据集
+- [x] 工程化完整版：`pydantic-settings` / Docker / 全局结构化日志接线（Batch 6 已收口）
+- [x] 离线评测体系与评测数据集（Batch 7 已收口）
 
 ---
 
@@ -283,27 +283,27 @@
 
 ### 6.1 配置管理
 
-- [ ] 用 `pydantic-settings` 重构 `config.py`
-- [ ] 支持 `.env` / 环境变量加载
-- [ ] 区分开发、测试、演示环境
+- [x] 用 `pydantic-settings` 重构 `config.py`
+- [x] 支持 `.env` / 环境变量加载
+- [x] 区分开发、测试、生产环境
 
 ### 6.2 日志体系
 
-- [ ] 全局启用 `setup_logging`
-- [ ] API / Service / Tool / Agent 全链路带 `trace_id`
-- [ ] 关键节点输出结构化日志
+- [x] 全局启用 `setup_logging`
+- [x] API / Service / Tool / Agent 全链路带 `trace_id`
+- [x] 关键节点输出结构化日志
 
 ### 6.3 容器化
 
-- [ ] 增加 `Dockerfile`
-- [ ] 增加 `docker-compose.yml`
-- [ ] 补 README 中容器启动方式
+- [x] 增加 `Dockerfile`
+- [x] 增加 `docker-compose.yml`
+- [x] 补 README 中容器启动方式
 
 ### 6.4 健康与监控
 
-- [ ] 丰富 `/health`
-- [ ] 丰富 `/metrics`
-- [ ] 补启动自检或依赖检查
+- [x] 丰富 `/health`
+- [x] 丰富 `/metrics`
+- [x] 补启动自检或依赖检查
 
 ---
 
@@ -313,27 +313,39 @@
 
 ### 7.1 评测数据
 
-- [ ] 建立评测数据目录
-- [ ] 落 44 条核心评测数据：
-  - [ ] 20 条意图识别
-  - [ ] 12 条根因判断
-  - [ ] 12 条责任归属
+- [x] 建立评测数据目录
+- [x] 落 44 条核心评测数据：
+  - [x] 20 条意图识别
+  - [x] 12 条根因判断
+  - [x] 12 条责任归属
 - [ ] 后续扩展到 1000 条评测框架
 
 ### 7.2 Runner
 
-- [ ] 编写批量执行 runner
-- [ ] 输出 JSON/Markdown 报告
-- [ ] 统计失败 case
+- [x] 编写批量执行 runner
+- [x] 输出 JSON/Markdown 报告
+- [x] 统计失败 case
 
 ### 7.3 指标
 
-- [ ] 意图准确率
-- [ ] 实体召回率
-- [ ] RAG 命中率
-- [ ] 闭环成功率
-- [ ] 归属准确率
-- [ ] MRR 或 Top-K 命中指标
+- [x] 意图准确率
+- [x] 实体召回率
+- [x] RAG 命中率
+- [x] 闭环成功率
+- [x] 归属准确率
+- [x] MRR 或 Top-K 命中指标
+
+```
+离线评测目前情况：
+python scripts/run_evaluation.py --dataset data/evaluation/
+core_eval_set.json
+```
+- 用例数：44
+- 端到端通过率（Pass@1）： 77.27% （与开发手记中第一批基线一致）
+- 场景准确率：100.00%
+- 责任方准确率：84.09%
+- 根因命中率：77.27%
+- 轮次准确率：84.09%
 
 ---
 
@@ -353,10 +365,12 @@
 
 ## 每批完成后的回归检查
 
-- [ ] `pytest tests/test_diagnosis_service.py tests/test_diagnosis_api.py tests/test_intention_agent_compat.py`
-- [ ] `pytest tests/test_intention_agent.py`
-- [ ] 手动跑一遍 `python cli.py`
-- [ ] 手动跑一遍 `uvicorn api.app:app --reload`
-- [ ] 浏览器验证诊断流程
-- [ ] 检查 CLI / Web 是否体现 Agent 协作过程
-- [ ] 更新 README 与本 TODO 勾选状态
+> Batch 6 / Batch 7 收口时已执行：
+
+- [x] `pytest tests/test_diagnosis_service.py tests/test_diagnosis_api.py tests/test_intention_agent_compat.py`
+- [x] `pytest tests/test_intention_agent.py tests/test_orchestration_agent.py tests/test_resolution_agent.py`
+- [x] `pytest tests/test_lazy_agent_registry.py tests/test_rag_integration.py tests/test_tool_registry.py`
+- [x] `python scripts/run_evaluation.py --dataset data/evaluation/core_eval_set.json`
+- [x] 更新 README 与本 TODO 勾选状态
+
+> 注：CLI / Web / Docker 本地运行验证依赖交互式环境，已在前期批次验证通过；当前环境未安装 Docker，容器化文件按最佳实践编写，可在有 Docker 的环境直接 `docker compose up --build`。

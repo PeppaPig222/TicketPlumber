@@ -17,7 +17,12 @@ client = TestClient(app)
 def test_health_endpoint():
     response = client.get("/health")
     assert response.status_code == 200
-    assert response.json()["status"] == "ok"
+    data = response.json()
+    assert data["status"] in {"ok", "degraded"}
+    assert "dependencies" in data
+    assert "llm" in data["dependencies"]
+    assert "rag" in data["dependencies"]
+    assert "memory" in data["dependencies"]
 
 
 def test_diagnose_and_trace_endpoints():

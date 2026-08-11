@@ -4,9 +4,11 @@
 FastAPI 入口：提供诊断、trace 查询与 SSE 回放接口。
 """
 import json
+import os
 import uuid
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Dict, Optional
 
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,10 +17,26 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
+from config import LLM_CONFIG, SYSTEM_CONFIG
 from services.diagnosis_service import DiagnosisService, TraceRepository
+from utils.logging_config import set_trace_id, setup_logging
 
+# 全局启用结构化日志
+setup_logging(level=SYSTEM_CONFIG["log_level"])
 
 app = FastAPI(title="小哈工单智能诊断助手", version="1.0.0")
+
+
+@app.middleware("http")
+async def trace_id_middleware(request, call_next):
+    """为每个请求注入 trace_id，并返回响应头"""
+    trace_id = request.headers.get("x-trace-id") or str(uuid.uuid4())[:8]
+    set_trace_id(trace_id)
+    response = await call_next(request)
+    response.headers["x-trace-id"] = trace_id
+    return response
+
+
 # 全局共享 trace 存储，让 /diagnose 写入的 trace 能被 /trace 查询到
 trace_repo = TraceRepository()
 # 默认 service 用于 /metrics，避免 per-request 实例统计失真
@@ -53,9 +71,52 @@ async def index():
     raise HTTPException(status_code=404, detail="前端页面不存在")
 
 
+def _check_llm_config() -> Dict[str, str]:
+    """检查 LLM 配置是否有效（不真正调用 API）"""
+    api_key = LLM_CONFIG.get("api_key", "")
+    if not api_key or api_key in ("API_KEY", "your_api_key_here", ""):
+        return {"status": "unconfigured", "message": "LLM API Key 未配置"}
+    return {"status": "ok", "message": "LLM 配置已就绪"}
+
+
+def _check_rag_storage() -> Dict[str, str]:
+    """检查 RAG 知识库存储是否可访问"""
+    rag_db = Path("data/rag_knowledge/milvus_lite.db")
+    if rag_db.exists():
+        return {"status": "ok", "message": f"RAG 知识库已就绪 ({rag_db})"}
+    return {"status": "not_initialized", "message": "RAG 知识库未初始化，可运行 scripts/init_diagnosis_kb.py"}
+
+
+def _check_memory_storage() -> Dict[str, str]:
+    """检查记忆存储目录是否可写"""
+    memory_dir = Path("data/memory")
+    try:
+        memory_dir.mkdir(parents=True, exist_ok=True)
+        test_file = memory_dir / ".write_test"
+        test_file.write_text("ok")
+        test_file.unlink()
+        return {"status": "ok", "message": f"记忆存储目录可写 ({memory_dir})"}
+    except Exception as e:
+        return {"status": "error", "message": f"记忆存储目录不可写: {e}"}
+
+
 @app.get("/health")
 async def health():
-    return {"status": "ok", "service": "xiaoha-ticket-diagnosis"}
+    dependencies = {
+        "llm": _check_llm_config(),
+        "rag": _check_rag_storage(),
+        "memory": _check_memory_storage(),
+    }
+    overall_status = "ok" if all(d["status"] == "ok" for d in dependencies.values()) else "degraded"
+
+    return {
+        "status": overall_status,
+        "service": "xiaoha-ticket-diagnosis",
+        "version": "1.0.0",
+        "env": SYSTEM_CONFIG.get("env", "development"),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "dependencies": dependencies,
+    }
 
 
 @app.get("/metrics")
@@ -63,6 +124,7 @@ async def metrics():
     metrics_data = default_diagnosis_service.get_metrics()
     # trace_count 以全局 trace_repo 为准
     metrics_data["trace_count"] = trace_repo.count()
+    metrics_data["timestamp"] = datetime.now(timezone.utc).isoformat()
     return metrics_data
 
 

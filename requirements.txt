@@ -31,6 +31,9 @@ sse-starlette>=2.0.0          # Server-Sent Events 流式推送
 # --- 配置管理 ---
 pydantic-settings>=2.5.0      # 环境变量 + .env 配置
 
+# --- 监控 ---
+psutil>=6.0.0                 # 系统指标（CPU/内存/磁盘）
+
 # --- 测试 ---
 pytest>=8.3.0
 pytest-asyncio>=0.24.0        # 异步测试支持

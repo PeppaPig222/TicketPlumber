@@ -214,7 +214,7 @@ class ToolRegistry:
             "parameters": parameters,
             "handler": handler,
         }
-        logger.info(f"Tool registered: {name}")
+        logger.info("Tool registered", extra={"tool_name": name})
 
     def get_tool_schemas(self) -> str:
         """生成给 LLM 的工具描述（JSON Schema 风格），用于 Prompt 注入"""
@@ -230,7 +230,7 @@ class ToolRegistry:
     async def execute(self, name: str, **kwargs) -> Dict[str, Any]:
         """执行工具调用，支持超时与统一降级返回格式。"""
         if name not in self._tools:
-            logger.error(f"Tool not found: {name}")
+            logger.error("Tool not found", extra={"tool_name": name})
             return {
                 "status": "error",
                 "tool": name,
@@ -255,7 +255,10 @@ class ToolRegistry:
                 }
             return result
         except asyncio.TimeoutError:
-            logger.warning(f"Tool {name} execution timed out after {timeout}s")
+            logger.warning(
+                "Tool execution timed out",
+                extra={"tool_name": name, "timeout_sec": timeout},
+            )
             return {
                 "status": "timeout",
                 "tool": name,
@@ -263,7 +266,11 @@ class ToolRegistry:
                 "data": {},
             }
         except Exception as e:
-            logger.error(f"Tool {name} execution failed: {e}")
+            logger.error(
+                "Tool execution failed",
+                extra={"tool_name": name, "status": "error"},
+                exc_info=True,
+            )
             return {
                 "status": "error",
                 "tool": name,

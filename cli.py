@@ -16,10 +16,14 @@ from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
 
-from config import APP_CONFIG, LLM_CONFIG, RESILIENCE_CONFIG
+from config import APP_CONFIG, LLM_CONFIG, RESILIENCE_CONFIG, SYSTEM_CONFIG
 from config_agentscope import init_agentscope
 from services.diagnosis_service import DiagnosisService
 from utils.llm_resilience import run_health_check as check_llm_health
+from utils.logging_config import setup_logging
+
+# 全局启用结构化日志
+setup_logging(level=SYSTEM_CONFIG["log_level"])
 
 
 class DiagBotCLI:

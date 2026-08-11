@@ -49,13 +49,13 @@ class OrchestrationAgent(AgentBase):
     def register_agent(self, agent_name: str, agent: AgentBase):
         """注册子智能体"""
         self.agent_registry[agent_name] = agent
-        logger.info(f"Registered agent: {agent_name}")
+        logger.info("Registered agent", extra={"agent_name": agent_name})
 
     def unregister_agent(self, agent_name: str):
         """注销子智能体"""
         if agent_name in self.agent_registry:
             del self.agent_registry[agent_name]
-            logger.info(f"Unregistered agent: {agent_name}")
+            logger.info("Unregistered agent", extra={"agent_name": agent_name})
 
     async def reply(self, x: Optional[Union[Msg, List[Msg]]] = None) -> Msg:
         """
@@ -84,7 +84,7 @@ class OrchestrationAgent(AgentBase):
         try:
             intention_data = json.loads(intention_output) if isinstance(intention_output, str) else intention_output
         except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse intention output: {e}")
+            logger.error("Failed to parse intention output", exc_info=True)
             return Msg(
                 name=self.name,
                 content=json.dumps({"error": "Invalid intention format"}),
@@ -106,7 +106,10 @@ class OrchestrationAgent(AgentBase):
         # 按优先级排序
         sorted_schedule = sorted(agent_schedule, key=lambda x: x.get("priority", 999))
 
-        logger.info(f"Orchestrating {len(sorted_schedule)} agents")
+        logger.info(
+            f"Orchestrating {len(sorted_schedule)} agents",
+            extra={"agent_count": len(sorted_schedule)},
+        )
 
         # 准备上下文信息
         context = self._prepare_context(intention_data)
@@ -229,7 +232,10 @@ class OrchestrationAgent(AgentBase):
             }]
 
         # 多个任务并行执行
-        logger.info(f"Executing {len(tasks)} agents in parallel")
+        logger.info(
+            f"Executing {len(tasks)} agents in parallel",
+            extra={"agent_count": len(tasks)},
+        )
 
         # 创建并行任务
         parallel_coroutines = []
@@ -239,7 +245,10 @@ class OrchestrationAgent(AgentBase):
             reason = task.get("reason", "")
             expected_output = task.get("expected_output", "")
 
-            logger.info(f"Parallel executing agent: {agent_name} (priority={priority})")
+            logger.info(
+                f"Parallel executing agent: {agent_name}",
+                extra={"agent_name": agent_name, "priority": priority},
+            )
 
             # 创建协程
             coroutine = self._execute_agent(
@@ -261,7 +270,11 @@ class OrchestrationAgent(AgentBase):
         results = []
         for (agent_name, priority, _), exec_result in zip(parallel_coroutines, execution_results):
             if isinstance(exec_result, Exception):
-                logger.error(f"Parallel agent execution failed: {agent_name}, error: {exec_result}")
+                logger.error(
+                    "Parallel agent execution failed",
+                    extra={"agent_name": agent_name, "status": "error"},
+                    exc_info=True,
+                )
                 result = {
                     "status": "error",
                     "agent_name": agent_name,
@@ -302,7 +315,10 @@ class OrchestrationAgent(AgentBase):
         """
         # 检查智能体是否注册
         if agent_name not in self.agent_registry:
-            logger.warning(f"Agent not registered: {agent_name}")
+            logger.warning(
+                "Agent not registered",
+                extra={"agent_name": agent_name},
+            )
             return {
                 "status": "error",
                 "message": f"智能体未注册: {agent_name}"
@@ -353,7 +369,11 @@ class OrchestrationAgent(AgentBase):
             }
 
         except Exception as e:
-            logger.error(f"Agent execution failed: {agent_name}, error: {e}")
+            logger.error(
+                "Agent execution failed",
+                extra={"agent_name": agent_name, "status": "error"},
+                exc_info=True,
+            )
             # 返回友好的错误信息，但不中断流程
             return {
                 "status": "error",
@@ -469,9 +489,12 @@ class OrchestrationAgent(AgentBase):
                 "evidence": resolution_data.get("evidence", []),
             })
             logger.info(
-                "Saved diagnosis memory for ticket %s with responsible party %s",
-                ticket_id or "unknown",
-                resolution_data.get("responsible_party", "unknown"),
+                "Saved diagnosis memory",
+                extra={
+                    "ticket_id": ticket_id or "unknown",
+                    "responsible_party": resolution_data.get("responsible_party", "unknown"),
+                    "scenario": scenario,
+                },
             )
             return
 
@@ -481,4 +504,7 @@ class OrchestrationAgent(AgentBase):
                 content=" | ".join(agent_observations),
                 session_id=getattr(self.memory_manager, "session_id", None),
             )
-            logger.info("Saved agent observations to long-term chat history")
+            logger.info(
+                "Saved agent observations to long-term chat history",
+                extra={"observation_count": len(agent_observations)},
+            )

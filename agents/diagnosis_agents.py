@@ -14,8 +14,11 @@ from typing import Any, Awaitable, Callable, Dict, List
 
 from agentscope.message import Msg
 
+import logging
+
 from utils.tool_registry import tool_registry as default_tool_registry
 
+logger = logging.getLogger(__name__)
 
 AgentRunner = Callable[[Dict[str, Any], Any], Awaitable[Dict[str, Any]]]
 
@@ -85,10 +88,26 @@ class DiagnosticAgent:
     async def reply(self, x: Msg = None) -> Msg:
         payload = _extract_payload(x)
         context = payload.get("context", {}) or {}
+        round_num = context.get("round_num", 0)
+
+        logger.info(
+            f"Agent {self.name} 开始执行",
+            extra={"agent_name": self.name, "round_num": round_num},
+        )
 
         start = time.perf_counter()
         result = await self.runner(context, default_tool_registry)
         duration_ms = round((time.perf_counter() - start) * 1000, 1)
+
+        logger.info(
+            f"Agent {self.name} 执行完成",
+            extra={
+                "agent_name": self.name,
+                "round_num": round_num,
+                "duration_ms": duration_ms,
+                "status": result.get("status", "success"),
+            },
+        )
 
         data = {
             **result,

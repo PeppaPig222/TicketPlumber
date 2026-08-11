@@ -228,10 +228,32 @@ CLI / HTTP Request
 pip install -r requirements.txt
 ```
 
+配置环境变量（复制示例文件并修改）：
+
+```bash
+cp .env.example .env
+# 编辑 .env，填入真实的 LLM API Key 和模型名
+```
+
 ### 2. 启动 Web 服务
+
+本地开发：
 
 ```bash
 uvicorn api.app:app --reload
+```
+
+Docker 部署（需先安装 Docker）：
+
+```bash
+# 构建并启动
+docker compose up --build -d
+
+# 查看健康状态
+curl http://127.0.0.1:8000/health
+
+# 查看监控指标
+curl http://127.0.0.1:8000/metrics
 ```
 
 打开：

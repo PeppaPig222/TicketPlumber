@@ -7,8 +7,11 @@ import json
 import logging
 import re
 import sys
+import time
 import uuid
 from typing import Any, Dict, List, Optional
+
+import psutil
 
 from agentscope.message import Msg
 
@@ -40,6 +43,10 @@ class TraceRepository:
 
     def count(self) -> int:
         return len(self._data)
+
+
+# 模块启动时间，用于计算 uptime
+_START_TIME = time.time()
 
 
 class DiagnosisService:
@@ -81,6 +88,16 @@ class DiagnosisService:
 
         effective_user_id = user_id or self.user_id
         effective_session_id = session_id or str(uuid.uuid4())[:8]
+
+        logger.info(
+            "开始工单诊断",
+            extra={
+                "trace_id": trace_id,
+                "user_id": effective_user_id,
+                "session_id": effective_session_id,
+                "query": query[:100],
+            },
+        )
 
         # 创建本次诊断专属的三层记忆管理器
         memory_manager = MemoryManager(
@@ -129,6 +146,10 @@ class DiagnosisService:
 
         final_decision = "done"
         for round_num in range(1, self.loop_decider.max_rounds + 1):
+            logger.info(
+                f"开始第 {round_num} 轮诊断",
+                extra={"round_num": round_num, "trace_id": trace_id},
+            )
             # 组装记忆上下文，供 IntentionAgent 丰富意图理解
             memory_context = {
                 "recent_dialogue": memory_manager.short_term.get_context_string(3),
@@ -150,8 +171,20 @@ class DiagnosisService:
             try:
                 intention_result = await intention_agent.reply(intention_msg)
                 intention_data = json.loads(intention_result.content)
+                logger.info(
+                    "IntentionAgent 完成意图识别",
+                    extra={
+                        "round_num": round_num,
+                        "trace_id": trace_id,
+                        "intent": intention_data.get("intent", ""),
+                        "scenario": intention_data.get("scenario", ""),
+                    },
+                )
             except Exception as e:
-                logger.error(f"IntentionAgent failed in round {round_num}: {e}")
+                logger.error(
+                    f"IntentionAgent failed in round {round_num}: {e}",
+                    extra={"round_num": round_num, "trace_id": trace_id},
+                )
                 # 回退到规则调度：使用通用诊断意图
                 intention_data = self._fallback_intention(round_num, query, state)
                 intention_result = Msg(
@@ -173,8 +206,21 @@ class DiagnosisService:
             try:
                 orchestration_result = await orchestrator.reply(intention_result)
                 round_result = json.loads(orchestration_result.content)
+                agent_names = [a.get("agent_name", "") for a in round_result.get("agents", [])]
+                logger.info(
+                    "OrchestrationAgent 完成本轮调度",
+                    extra={
+                        "round_num": round_num,
+                        "trace_id": trace_id,
+                        "agents": agent_names,
+                        "decision": round_result.get("decision", ""),
+                    },
+                )
             except Exception as e:
-                logger.error(f"OrchestrationAgent failed in round {round_num}: {e}")
+                logger.error(
+                    f"OrchestrationAgent failed in round {round_num}: {e}",
+                    extra={"round_num": round_num, "trace_id": trace_id},
+                )
                 round_result = self._fallback_round_result(round_num, e)
 
             self._record_trace(trace, round_result)
@@ -182,11 +228,24 @@ class DiagnosisService:
 
             final_decision = self.loop_decider.decide(round_result, round_num)
             trace.end_round(final_decision)
+            logger.info(
+                f"第 {round_num} 轮结束，决策: {final_decision}",
+                extra={"round_num": round_num, "trace_id": trace_id, "decision": final_decision},
+            )
 
             if final_decision in {"done", "need_info"}:
                 break
 
         diagnosis = self._build_response(trace_id, state, trace.get_trace(), final_decision)
+        logger.info(
+            "工单诊断完成",
+            extra={
+                "trace_id": trace_id,
+                "status": diagnosis.get("status", ""),
+                "scenario": diagnosis.get("scenario", ""),
+                "total_rounds": (diagnosis.get("trace") or {}).get("total_rounds", 0),
+            },
+        )
         self.trace_repo.save(
             trace_id,
             {
@@ -235,6 +294,15 @@ class DiagnosisService:
 
     def get_metrics(self) -> Dict[str, Any]:
         stats = self.long_term_memory.get_statistics()
+        try:
+            system_metrics = {
+                "cpu_percent": psutil.cpu_percent(interval=None),
+                "memory_percent": psutil.virtual_memory().percent,
+                "disk_usage_percent": psutil.disk_usage("/").percent,
+            }
+        except Exception:
+            system_metrics = {}
+
         return {
             "trace_count": self.trace_repo.count(),
             "max_rounds": self.loop_decider.max_rounds,
@@ -242,6 +310,8 @@ class DiagnosisService:
             "registered_skills": len(list(self.skill_registry.keys())),
             "total_diagnoses": stats.get("total_diagnoses", 0),
             "rag_available": self.rag_agent is not None,
+            "uptime_seconds": round(time.time() - _START_TIME, 2),
+            "system": system_metrics,
         }
 
     async def _load_ticket_context(self, query: str) -> Dict[str, Any]:

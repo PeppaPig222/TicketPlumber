@@ -175,6 +175,84 @@ def save_report(report: Dict[str, Any]):
     print(f"详细报告已保存: {report_path}")
 
 
+def save_markdown_report(report: Dict[str, Any]):
+    """保存 Markdown 格式评测报告"""
+    REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    md_path = REPORT_DIR / f"eval_report_{timestamp}.md"
+
+    metrics = report["metrics"]
+    overall = metrics["overall"]
+    failures = [r for r in report["results"] if not r["all_ok"]]
+
+    lines = [
+        "# 小哈工单智能诊断助手 — 离线评测报告",
+        "",
+        "## 概览",
+        "",
+        f"- **数据集**: `{report['dataset']}`",
+        f"- **用例数**: {report['total_cases']}",
+        f"- **评测时间**: {report['timestamp']}",
+        f"- **失败用例数**: {metrics['failure_count']}",
+        "",
+        "## 总体指标",
+        "",
+        "| 指标 | 数值 |",
+        "|---|---|",
+        f"| 场景准确率 (Scenario Accuracy) | {overall['scenario_accuracy']:.2%} |",
+        f"| 责任方准确率 (Attribution Acc) | {overall['responsible_party_accuracy']:.2%} |",
+        f"| 根因命中率 (Root Cause Hit Rate) | {overall['root_cause_hit_rate']:.2%} |",
+        f"| 轮次准确率 (Rounds Accuracy) | {overall['rounds_accuracy']:.2%} |",
+        f"| 端到端通过率 (Pass@1) | {overall['pass_at_1']:.2%} |",
+        "",
+        "## 分类 Pass@1",
+        "",
+        "| 分类 | 通过率 |",
+        "|---|---|",
+    ]
+    for cat, rate in metrics["by_category"].items():
+        lines.append(f"| {cat} | {rate:.2%} |")
+
+    lines.extend([
+        "",
+        "## 失败明细",
+        "",
+    ])
+
+    if failures:
+        lines.append("| 用例ID | 分类 | 查询 | 实际场景 | 期望场景 | 实际责任方 | 期望责任方 |")
+        lines.append("|---|---|---|---|---|---|---|---|")
+        for r in failures[:20]:
+            lines.append(
+                f"| {r['id']} | {r['category']} | {r['query'][:40]}{'...' if len(r['query']) > 40 else ''} | "
+                f"{r['actual_scenario']} | {r['expected_scenario']} | {r['actual_responsible']} | {r['expected_responsible']} |"
+            )
+    else:
+        lines.append("全部用例通过，无失败明细。")
+
+    # 关键结论
+    pass_rate = overall["pass_at_1"]
+    if pass_rate >= 0.9:
+        conclusion = "🟢 系统表现优秀，端到端通过率达到 90% 以上。"
+    elif pass_rate >= 0.75:
+        conclusion = "🟡 系统表现良好，但仍有优化空间。"
+    elif pass_rate >= 0.6:
+        conclusion = "🟠 系统表现一般，建议针对失败用例重点优化。"
+    else:
+        conclusion = "🔴 系统表现较差，需要全面排查链路问题。"
+
+    lines.extend([
+        "",
+        "## 结论",
+        "",
+        conclusion,
+        "",
+    ])
+
+    md_path.write_text("\n".join(lines), encoding="utf-8")
+    print(f"Markdown 报告已保存: {md_path}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="小哈工单智能诊断助手离线评测")
     parser.add_argument(
@@ -199,6 +277,7 @@ def main():
     print_report(report)
     if args.save:
         save_report(report)
+        save_markdown_report(report)
 
 
 if __name__ == "__main__":

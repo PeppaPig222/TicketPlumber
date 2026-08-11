@@ -1,0 +1,35 @@
+# ============================================================
+# 小哈工单智能诊断助手 — Docker Compose 部署
+# ============================================================
+version: "3.8"
+
+services:
+  diagbot:
+    build: .
+    container_name: diagbot
+    image: diagbot:latest
+    ports:
+      - "8000:8000"
+    environment:
+      - DIAG_SYS_ENV=production
+      - DIAG_SYS_LOG_LEVEL=INFO
+      # 从宿主机 .env 读取真实 LLM 配置
+      - DIAG_LLM_API_KEY=${DIAG_LLM_API_KEY}
+      - DIAG_LLM_MODEL_NAME=${DIAG_LLM_MODEL_NAME}
+      - DIAG_LLM_BASE_URL=${DIAG_LLM_BASE_URL:-https://ark.cn-beijing.volces.com/api/v3}
+    volumes:
+      # 持久化数据目录
+      - ./data:/app/data
+      # 挂载环境变量配置（只读）
+      - ./.env:/app/.env:ro
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - "CMD"
+        - "python"
+        - "-c"
+        - "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s

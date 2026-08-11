@@ -1,0 +1,40 @@
+# Git / IDE
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.venv/
+venv/
+env/
+ENV/
+
+# 前端（需要先在本地 build，再 COPY 进镜像；node_modules 绝不进镜像）
+frontend/node_modules/
+frontend/.vite/
+
+# 旧版静态页面（已被 React 面板替代）
+web/
+
+# 数据文件（通过 volumes 挂载，避免镜像过大）
+data/memory/*.json
+data/rag_knowledge/*.db
+data/evaluation/reports/*.json
+data/evaluation/reports/*.md
+
+# 环境变量与敏感信息
+.env
+.env.local
+
+# 日志
+*.log
+logs/
+
+# 测试与文档（可选，视是否需要保留在镜像中）
+.pytest_cache/
+htmlcov/
