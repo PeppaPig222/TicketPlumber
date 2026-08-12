@@ -27,10 +27,17 @@ export interface Trace {
   rounds: Round[];
 }
 
+export interface ResponsibilityMatrixItem {
+  party: string;
+  score: number;
+  reasons: string[];
+}
+
 export interface DiagnosisData {
   summary: string;
   root_cause: string;
   responsible_party: string;
+  responsible_party_matrix?: ResponsibilityMatrixItem[];
   recommendations: string[];
 }
 

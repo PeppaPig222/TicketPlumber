@@ -15,6 +15,17 @@ function roundStatusClass(round: Round): string {
   return "";
 }
 
+function isCrossDomainRound(round: Round): boolean {
+  const domainAgents = new Set<string>();
+  for (const agent of round.agents) {
+    const name = agent.agent_name;
+    if (name === "CodeAgent" || name === "OperationAgent" || name === "DataAgent") {
+      domainAgents.add(name);
+    }
+  }
+  return domainAgents.size >= 2;
+}
+
 export default function AgentTimeline({ rounds, totalDurationMs, streaming }: Props) {
   return (
     <div className="card">
@@ -25,12 +36,15 @@ export default function AgentTimeline({ rounds, totalDurationMs, streaming }: Pr
         </div>
       ) : (
         <div className="timeline">
-          {rounds.map((round) => (
-            <div key={round.round_num} className="round-block">
-              <div className={`round-dot ${roundStatusClass(round)}`} />
+          {rounds.map((round) => {
+            const crossDomain = isCrossDomainRound(round);
+            return (
+            <div key={round.round_num} className={`round-block ${crossDomain ? "cross-domain" : ""}`}>
+              <div className={`round-dot ${roundStatusClass(round)} ${crossDomain ? "cross-domain" : ""}`} />
               <div className="round-line" />
               <div>
                 <strong>Round {round.round_num}</strong>
+                {crossDomain && <span className="pill pill-purple">交叉验证</span>}
                 <span className="muted" style={{ marginLeft: 8 }}>
                   {round.intent} · {round.duration_ms}ms · 决策：{round.decision || "-"}
                 </span>
@@ -38,7 +52,7 @@ export default function AgentTimeline({ rounds, totalDurationMs, streaming }: Pr
               {round.agents.map((agent, idx) => (
                 <div
                   key={`${agent.agent_name}-${idx}`}
-                  className={`agent-node ${agent.status}`}
+                  className={`agent-node ${agent.status} ${crossDomain ? "cross-domain" : ""}`}
                 >
                   <div className="agent-header">
                     <span className="agent-name">{agent.agent_name}</span>
@@ -57,7 +71,8 @@ export default function AgentTimeline({ rounds, totalDurationMs, streaming }: Pr
                 </div>
               ))}
             </div>
-          ))}
+          );
+          })}
           <div className="muted" style={{ marginTop: 12 }}>
             总耗时：{totalDurationMs}ms
           </div>

@@ -29,6 +29,9 @@ RAG_CONFIG = settings.rag.model_dump()
 # 连接与可用性：重试、熔断、健康检查
 RESILIENCE_CONFIG = settings.resilience.model_dump()
 
+# 调度策略矩阵配置
+SCHEDULING_CONFIG = settings.scheduling.model_dump()
+
 # 导出 Settings 单例，方便新代码直接访问
 __all__ = [
     "APP_CONFIG",
@@ -36,5 +39,6 @@ __all__ = [
     "SYSTEM_CONFIG",
     "RAG_CONFIG",
     "RESILIENCE_CONFIG",
+    "SCHEDULING_CONFIG",
     "settings",
 ]

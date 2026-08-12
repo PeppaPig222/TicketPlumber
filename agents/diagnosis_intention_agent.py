@@ -5,19 +5,27 @@
 """
 import json
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from agentscope.message import Msg
+from agents.scheduling import SchedulingContext, StrategyMatrix
 from utils.tool_registry import tool_registry
 
 
 class DiagnosisIntentionAgent:
     """基于工单上下文生成每一轮的专业 Agent 调度计划。"""
 
-    def __init__(self, name: str = "DiagnosisIntentionAgent", rag_agent=None):
+    def __init__(
+        self,
+        name: str = "DiagnosisIntentionAgent",
+        rag_agent=None,
+        strategy_matrix: StrategyMatrix = None,
+    ):
         self.name = name
         # RAG Agent 用于规则无法识别场景时做知识库 fallback
         self.rag_agent = rag_agent
+        # 调度策略矩阵，默认使用内置规则
+        self.strategy_matrix = strategy_matrix or StrategyMatrix()
 
     async def reply(self, x: Msg = None) -> Msg:
         payload = self._parse_payload(x)
@@ -33,6 +41,15 @@ class DiagnosisIntentionAgent:
 
         base_reasoning = self._build_reasoning(round_num, scenario, issue_type)
         enriched_reasoning = self._enrich_reasoning_with_memory(base_reasoning, memory_context)
+
+        schedule, schedule_metadata = self._build_schedule(
+            scenario=scenario,
+            round_num=round_num,
+            query=query,
+            ticket=ticket,
+            collected_data=collected_data,
+            key_entities=key_entities,
+        )
 
         intention = {
             "intent": self._intent_name(round_num),
@@ -54,7 +71,8 @@ class DiagnosisIntentionAgent:
             "round_num": round_num,
             "query": query,
             "collected_data": collected_data,
-            "agent_schedule": self._build_schedule(scenario, round_num),
+            "agent_schedule": [task.to_dict() for task in schedule],
+            "schedule_metadata": schedule_metadata,
         }
         return Msg(
             name=self.name,
@@ -179,73 +197,27 @@ class DiagnosisIntentionAgent:
             return base_reasoning
         return base_reasoning + " [记忆上下文] " + " | ".join(extras)
 
-    def _build_schedule(self, scenario: str, round_num: int) -> List[Dict[str, Any]]:
-        schedules = {
-            "generic_ticket_diagnosis": {
-                1: [
-                    self._task("OperationAgent", 1, "尝试补全商户上下文与历史经验", "商户画像与历史案例"),
-                    self._task("DataAgent", 1, "预热基础实体", "基础数据事实"),
-                ],
-                2: [
-                    self._task("CodeAgent", 1, "从技术链路视角补充诊断", "技术侧线索"),
-                    self._task("OperationAgent", 1, "从业务流程视角补充诊断", "操作侧线索"),
-                    self._task("DataAgent", 1, "从数据视角补充诊断", "数据侧线索"),
-                    self._task("ResolutionAgent", 2, "汇总证据并给出初步结论", "归因建议"),
-                ],
-                3: [],
-            },
-            "order_status_anomaly": {
-                1: [
-                    self._task("CodeAgent", 1, "获取订单当前状态与时间线", "订单基础详情"),
-                    self._task("OperationAgent", 1, "查询商户与历史工单上下文", "商户画像与历史经验"),
-                    self._task("DataAgent", 1, "预热订单关键实体", "后续一致性校验事实"),
-                ],
-                2: [
-                    self._task("CodeAgent", 1, "排查技术链路", "前后端代码与接口状态"),
-                    self._task("OperationAgent", 1, "排查用户操作", "用户是否误操作"),
-                    self._task("DataAgent", 1, "排查数据一致性", "跨表比对与回调链路"),
-                ],
-                3: [
-                    self._task("CodeAgent", 1, "复核技术链路结论", "技术侧复核"),
-                    self._task("OperationAgent", 1, "复核业务操作结论", "操作侧复核"),
-                    self._task("DataAgent", 1, "复核数据异常结论", "数据侧复核"),
-                    self._task("ResolutionAgent", 2, "汇总结论并判责", "根因与建议"),
-                ],
-            },
-            "asset_allocation_failure": {
-                1: [
-                    self._task("CodeAgent", 1, "获取资产池与系统配置基础信息", "额度与配置概况"),
-                    self._task("OperationAgent", 1, "获取用户绑定与历史经验", "绑定状态与历史案例"),
-                    self._task("DataAgent", 1, "预热资产与分配实体", "可用额度与分配事实"),
-                ],
-                2: [
-                    self._task("CodeAgent", 1, "检查系统配置与权限开关", "系统配置限制"),
-                    self._task("OperationAgent", 1, "检查绑定与保护期", "用户归属限制"),
-                    self._task("DataAgent", 1, "检查额度限制", "额度是否足够"),
-                    self._task("ResolutionAgent", 2, "汇总结论并给出处理建议", "根因与建议"),
-                ],
-                3: [],
-            },
-            "settlement_amount_mismatch": {
-                1: [
-                    self._task("CodeAgent", 1, "读取合同、账单与结算规则", "结算基础事实"),
-                    self._task("OperationAgent", 1, "检索相似工单与操作侧线索", "历史处理经验"),
-                    self._task("DataAgent", 1, "预热账单与规则实体", "后续规则校验事实"),
-                ],
-                2: [
-                    self._task("CodeAgent", 1, "检查规则与计算链路", "比例与金额一致性"),
-                    self._task("OperationAgent", 1, "排除人工流程异常", "历史与流程线索"),
-                    self._task("DataAgent", 1, "检查合同标签与数据时间线", "标签变更和规则痕迹"),
-                ],
-                3: [
-                    self._task("CodeAgent", 1, "复核规则链路结论", "技术侧复核"),
-                    self._task("OperationAgent", 1, "复核流程与历史案例", "操作侧复核"),
-                    self._task("DataAgent", 1, "复核标签与比例冲突", "数据侧复核"),
-                    self._task("ResolutionAgent", 2, "汇总结论并判责", "根因与建议"),
-                ],
-            },
-        }
-        return schedules.get(scenario, {}).get(round_num, [])
+    def _build_schedule(
+        self,
+        scenario: str,
+        round_num: int,
+        query: str,
+        ticket: Dict[str, Any],
+        collected_data: Dict[str, Any],
+        key_entities: Dict[str, Any],
+    ) -> Tuple[List[Any], Dict[str, Any]]:
+        """使用策略矩阵生成当前轮次的 Agent 调度计划。"""
+        ctx = SchedulingContext(
+            scenario=scenario,
+            round_num=round_num,
+            query=query,
+            ticket=ticket,
+            collected_data=collected_data,
+            key_entities=key_entities,
+            rag_available=self.rag_agent is not None,
+        )
+        tasks, metadata = self.strategy_matrix.build(ctx)
+        return tasks, metadata
 
     def _detect_issue_type(self, query: str) -> str:
         if "结算" in query:

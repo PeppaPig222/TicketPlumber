@@ -74,6 +74,11 @@ body {
   color: #4b5563;
 }
 
+.pill-purple {
+  background: #ede9fe;
+  color: #6d28d9;
+}
+
 .grid {
   display: grid;
   grid-template-columns: 1.4fr 1fr;
@@ -209,6 +214,43 @@ button:disabled {
 
 .agent-node.error {
   border-left-color: #ef4444;
+}
+
+.round-block.cross-domain {
+  background: #faf8ff;
+  border-radius: 12px;
+  padding: 12px;
+  margin-left: -12px;
+  margin-right: -12px;
+  border: 1px dashed #c4b5fd;
+}
+
+.round-dot.cross-domain {
+  background: #8b5cf6;
+  box-shadow: 0 0 0 2px #8b5cf6;
+}
+
+.agent-node.cross-domain {
+  border-left-color: #8b5cf6;
+  border-left-width: 4px;
+}
+
+.matrix-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.matrix-row:last-child {
+  border-bottom: none;
+}
+
+.matrix-party {
+  min-width: 140px;
+  font-weight: 500;
+  font-size: 14px;
 }
 
 .agent-header {

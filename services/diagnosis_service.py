@@ -24,6 +24,7 @@ from agents.orchestration_agent import OrchestrationAgent
 from context.long_term_memory import LongTermMemory
 from context.memory_manager import MemoryManager
 from skills.registry import SkillRegistry
+from utils.errors import AppError, ErrorCode, ExecutionStatus, map_exception_to_error_code
 from utils.logging_config import set_trace_id
 from utils.trace_collector import TraceCollector, format_trace_sse
 from utils.tool_registry import tool_registry
@@ -86,6 +87,40 @@ class DiagnosisService:
         trace_id = str(uuid.uuid4())[:8]
         set_trace_id(trace_id)
 
+        try:
+            return await self._diagnose_internal(
+                query=query,
+                user_id=user_id,
+                session_id=session_id,
+                trace_id=trace_id,
+            )
+        except AppError as e:
+            logger.error(
+                "Diagnosis failed with AppError",
+                extra={"trace_id": trace_id, "error_code": e.code.value[0]},
+            )
+            return self._error_response(trace_id, e)
+        except Exception as e:
+            logger.error(
+                "Diagnosis failed with unexpected error",
+                extra={"trace_id": trace_id},
+                exc_info=True,
+            )
+            return self._error_response(
+                trace_id,
+                AppError(
+                    map_exception_to_error_code(e),
+                    detail=str(e),
+                ),
+            )
+
+    async def _diagnose_internal(
+        self,
+        query: str,
+        user_id: Optional[str],
+        session_id: Optional[str],
+        trace_id: str,
+    ) -> Dict[str, Any]:
         effective_user_id = user_id or self.user_id
         effective_session_id = session_id or str(uuid.uuid4())[:8]
 
@@ -128,6 +163,11 @@ class DiagnosisService:
 
         # 每次诊断都创建新的 Agent 链，避免并发状态竞争
         # 专业 Agent 从 .claude/skills/ 插件目录懒加载，通过 agent_kwargs 注入依赖
+        # 构造 Agent 注册表：专业 Agent 从 skill 懒加载，RAG Agent 通过工厂注入
+        custom_factories = {}
+        if self.rag_agent is not None:
+            custom_factories["RAGKnowledgeAgent"] = lambda: self.rag_agent
+
         agent_registry = LazyAgentRegistry(
             model=None,
             cache={},
@@ -136,6 +176,7 @@ class DiagnosisService:
                 "skill_registry": self.skill_registry,
                 "rag_agent": self.rag_agent,
             },
+            custom_factories=custom_factories,
         )
         intention_agent = IntentionAgent(name="IntentionAgent", rag_agent=self.rag_agent)
         orchestrator = OrchestrationAgent(
@@ -347,6 +388,7 @@ class DiagnosisService:
             "round_num": round_num,
             "query": query,
             "collected_data": state.get("collected_data", {}),
+            "error_code": ErrorCode.INTENT_RECOGNITION_FAILED.value[0],
             "agent_schedule": [
                 {
                     "agent_name": "CodeAgent",
@@ -381,6 +423,7 @@ class DiagnosisService:
             "status": "partial_failure",
             "errors": 1,
             "agents_executed": 0,
+            "error_code": ErrorCode.ORCHESTRATION_FAILED.value[0],
             "results": [
                 {
                     "agent_name": "OrchestrationAgent",
@@ -398,19 +441,22 @@ class DiagnosisService:
         }
 
     def _record_trace(self, trace: TraceCollector, round_result: Dict[str, Any]):
-        overall_status = round_result.get("status", "unknown")
+        overall_status = round_result.get("status", ExecutionStatus.UNKNOWN.value)
         has_errors = round_result.get("errors", 0) > 0 or overall_status in {
-            "partial_failure",
-            "error",
+            ExecutionStatus.PARTIAL_FAILURE.value,
+            ExecutionStatus.ERROR.value,
         }
 
         for result in round_result.get("results", []):
-            agent_status = result.get("status", "unknown")
+            agent_status = result.get("status", ExecutionStatus.UNKNOWN.value)
             tools_called = result.get("tools_called", [])
 
             # 如果整轮失败或单个 agent 失败/超时，标记为 degraded
-            if has_errors or agent_status in {"error", "timeout"}:
-                agent_status = "degraded"
+            if has_errors or agent_status in {
+                ExecutionStatus.ERROR.value,
+                ExecutionStatus.TIMEOUT.value,
+            }:
+                agent_status = ExecutionStatus.DEGRADED.value
 
             trace.record_agent(
                 agent_name=result.get("agent_name", ""),
@@ -494,6 +540,7 @@ class DiagnosisService:
             return {
                 "summary": facts.get("summary", "该工单不是单点故障，而是额度、保护期和权限三重限制叠加导致资产分配失败。"),
                 "responsible_party": facts.get("responsible_party", "业务配置与权限"),
+                "responsible_party_matrix": facts.get("responsible_party_matrix", []),
                 "root_cause": facts.get("root_cause", "可用额度仅 20 天，但申请 100 天；目标用户仍绑定其他商户且保护期有效；操作者也没有跨商户分配权限。"),
                 "evidence": facts.get("evidence", [
                     f"可用额度 {asset_pool.get('available_quota', 0)}，申请额度 {request.get('requested_quota', 0)}",
@@ -510,6 +557,7 @@ class DiagnosisService:
         if scenario == "settlement_amount_mismatch":
             resolver = {
                 "responsible_party": facts.get("responsible_party", "数据侧（标签脚本）"),
+                "responsible_party_matrix": facts.get("responsible_party_matrix", []),
                 "root_cause": facts.get("root_cause", "商户结算标签被脚本误刷，导致按错误分润比例结算。"),
                 "recommendations": facts.get("recommendations", []),
                 "evidence": facts.get("evidence", []),
@@ -525,6 +573,7 @@ class DiagnosisService:
 
         resolver = {
             "responsible_party": facts.get("responsible_party", "数据侧（后台脚本）"),
+            "responsible_party_matrix": facts.get("responsible_party_matrix", []),
             "root_cause": facts.get("root_cause", "退款回调后订单状态同步任务超时，导致订单状态未更新。"),
             "recommendations": facts.get("recommendations", []),
             "evidence": facts.get("evidence", []),
@@ -537,6 +586,32 @@ class DiagnosisService:
                 "补充重试和告警机制",
             ]
         return resolver
+
+    def _error_response(
+        self, trace_id: str, app_error: AppError
+    ) -> Dict[str, Any]:
+        """构造统一错误响应结构。"""
+        return {
+            "trace_id": trace_id,
+            "status": "error",
+            "ticket_id": None,
+            "scenario": "unknown",
+            "diagnosis": {
+                "summary": "诊断过程中发生错误",
+                "responsible_party": "未知",
+                "root_cause": app_error.detail,
+                "evidence": [],
+                "recommendations": ["请稍后重试或联系运维"],
+            },
+            "error": app_error.to_dict(),
+            "trace": {
+                "trace_id": trace_id,
+                "ticket_id": "",
+                "rounds": [],
+                "total_rounds": 0,
+                "status": "error",
+            },
+        }
 
     def _load_rag_agent(self):
         """懒加载 RAGKnowledgeAgent（来自 ask-question skill），失败时返回 None。"""

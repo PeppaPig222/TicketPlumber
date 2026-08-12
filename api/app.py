@@ -10,15 +10,17 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Optional
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
 from config import LLM_CONFIG, SYSTEM_CONFIG
 from services.diagnosis_service import DiagnosisService, TraceRepository
+from utils.errors import AppError, ErrorCode
 from utils.logging_config import set_trace_id, setup_logging
 
 # 全局启用结构化日志
@@ -62,6 +64,65 @@ class DiagnoseRequest(BaseModel):
     query: str = Field(..., description="工单描述或工单ID")
     user_id: Optional[str] = Field(None, description="用户ID")
     session_id: Optional[str] = Field(None, description="会话ID")
+
+
+class ErrorResponse(BaseModel):
+    """统一错误响应结构"""
+
+    error_code: str = Field(..., description="错误码")
+    error_type: str = Field(..., description="错误类型")
+    message: str = Field(..., description="错误信息")
+
+
+def _make_error_body(
+    code: ErrorCode, detail: Optional[str] = None, trace_id: Optional[str] = None
+) -> Dict:
+    message = detail or code.value[1]
+    body = {
+        "error": {
+            "error_code": code.value[0],
+            "error_type": code.name,
+            "message": message,
+        }
+    }
+    if trace_id:
+        body["trace_id"] = trace_id
+    return body
+
+
+@app.exception_handler(AppError)
+async def app_error_handler(request: Request, exc: AppError):
+    trace_id = request.headers.get("x-trace-id") or "unknown"
+    return JSONResponse(
+        status_code=500,
+        content=_make_error_body(exc.code, exc.detail, trace_id),
+        headers={"x-error-code": exc.code.value[0]},
+    )
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error_handler(request: Request, exc: RequestValidationError):
+    trace_id = request.headers.get("x-trace-id") or "unknown"
+    detail = str(exc.errors())
+    return JSONResponse(
+        status_code=422,
+        content=_make_error_body(
+            ErrorCode.INVALID_INTENTION, detail=detail, trace_id=trace_id
+        ),
+        headers={"x-error-code": ErrorCode.INVALID_INTENTION.value[0]},
+    )
+
+
+@app.exception_handler(Exception)
+async def generic_exception_handler(request: Request, exc: Exception):
+    trace_id = request.headers.get("x-trace-id") or "unknown"
+    return JSONResponse(
+        status_code=500,
+        content=_make_error_body(
+            ErrorCode.INTERNAL_ERROR, detail=str(exc), trace_id=trace_id
+        ),
+        headers={"x-error-code": ErrorCode.INTERNAL_ERROR.value[0]},
+    )
 
 
 @app.get("/")

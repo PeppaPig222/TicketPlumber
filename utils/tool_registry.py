@@ -13,6 +13,7 @@ from typing import Dict, Any, Callable, Coroutine
 import re
 
 from config import RESILIENCE_CONFIG
+from utils.errors import ErrorCode, ToolStatus
 
 logger = logging.getLogger(__name__)
 
@@ -232,8 +233,9 @@ class ToolRegistry:
         if name not in self._tools:
             logger.error("Tool not found", extra={"tool_name": name})
             return {
-                "status": "error",
+                "status": ToolStatus.ERROR.value,
                 "tool": name,
+                "error_code": ErrorCode.TOOL_NOT_FOUND.value[0],
                 "message": f"工具 {name} 不存在",
                 "data": {"available": self.get_tool_names()},
             }
@@ -245,11 +247,12 @@ class ToolRegistry:
             result = await asyncio.wait_for(handler(**kwargs), timeout=timeout)
             # 对老代码兼容：如果 handler 返回的是不带 status 的字典，默认视为 success
             if isinstance(result, dict) and "status" not in result and "error" not in result:
-                return {"status": "success", **result}
+                return {"status": ToolStatus.SUCCESS.value, **result}
             if isinstance(result, dict) and "error" in result and "status" not in result:
                 return {
-                    "status": "error",
+                    "status": ToolStatus.ERROR.value,
                     "tool": name,
+                    "error_code": ErrorCode.TOOL_EXECUTION_FAILED.value[0],
                     "message": str(result.get("error")),
                     "data": result,
                 }
@@ -260,8 +263,9 @@ class ToolRegistry:
                 extra={"tool_name": name, "timeout_sec": timeout},
             )
             return {
-                "status": "timeout",
+                "status": ToolStatus.TIMEOUT.value,
                 "tool": name,
+                "error_code": ErrorCode.TOOL_TIMEOUT.value[0],
                 "message": f"工具 {name} 执行超时（{timeout}秒）",
                 "data": {},
             }
@@ -272,8 +276,9 @@ class ToolRegistry:
                 exc_info=True,
             )
             return {
-                "status": "error",
+                "status": ToolStatus.ERROR.value,
                 "tool": name,
+                "error_code": ErrorCode.TOOL_EXECUTION_FAILED.value[0],
                 "message": str(e),
                 "data": {},
             }

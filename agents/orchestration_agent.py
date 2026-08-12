@@ -178,6 +178,7 @@ class OrchestrationAgent(AgentBase):
             "issue_type",
             "query",
             "collected_data",
+            "schedule_metadata",
         ]
         for field in passthrough_fields:
             if field in intention_data:
@@ -202,20 +203,144 @@ class OrchestrationAgent(AgentBase):
         previous_results: List[Dict]
     ) -> List[Dict]:
         """
-        并行执行多个智能体
+        并行执行多个智能体，支持依赖调度与 skip_if_missing。
 
-        Args:
-            tasks: 任务列表，每个任务包含 agent_name, priority, reason, expected_output
-            context: 上下文信息
-            previous_results: 前序智能体的结果
-
-        Returns:
-            执行结果列表
+        处理逻辑：
+        1. 先剔除因缺少 required_entities 而需要跳过的任务；
+        2. 对同一 priority 的任务按 depends_on 做拓扑分批，依赖已满足才执行；
+        3. 依赖未满足（例如 depends_on 不在本批次）则保留到下一批次处理。
         """
         if not tasks:
             return []
 
-        # 如果只有一个任务，直接执行
+        logger.info(
+            f"Executing {len(tasks)} agents with dependency/skip awareness",
+            extra={"agent_count": len(tasks)},
+        )
+
+        completed_agent_names = {
+            r.get("agent_name")
+            for r in previous_results
+            if r.get("result", {}).get("status") != "error"
+        }
+        key_entities = context.get("key_entities", {}) or {}
+        collected_facts = (
+            context.get("collected_data", {}).get("facts", {}) or {}
+        )
+
+        executable_tasks: List[Dict] = []
+        skipped_results: List[Dict] = []
+
+        for task in tasks:
+            agent_name = task.get("agent_name")
+
+            # 1. skip_if_missing：缺少必要实体则跳过
+            required_entities = task.get("required_entities", [])
+            if task.get("skip_if_missing") and required_entities:
+                missing = [
+                    e for e in required_entities
+                    if not (key_entities.get(e) or collected_facts.get(e))
+                ]
+                if missing:
+                    logger.info(
+                        "Skipping agent due to missing entities",
+                        extra={
+                            "agent_name": agent_name,
+                            "missing_entities": missing,
+                        },
+                    )
+                    skipped_results.append({
+                        "agent_name": agent_name,
+                        "priority": task.get("priority", 0),
+                        "result": {
+                            "status": "skipped",
+                            "agent_name": agent_name,
+                            "data": {"missing_entities": missing},
+                            "message": f"缺少必要实体，跳过执行: {missing}",
+                        },
+                    })
+                    continue
+
+            # 2. 检查 depends_on：依赖已在 previous_results 中完成才执行
+            depends_on = task.get("depends_on", [])
+            unmet = [d for d in depends_on if d not in completed_agent_names]
+            if unmet:
+                logger.info(
+                    "Deferring agent due to unmet dependencies",
+                    extra={
+                        "agent_name": agent_name,
+                        "unmet_dependencies": unmet,
+                    },
+                )
+                # 将任务延后到本批次后面单独执行（通过后续迭代处理）
+                task["_deferred_unmet"] = unmet
+
+            executable_tasks.append(task)
+
+        # 按 depends_on 做拓扑分批执行
+        results: List[Dict] = list(skipped_results)
+        remaining = list(executable_tasks)
+        max_iterations = len(remaining) + 1
+        iteration = 0
+
+        while remaining and iteration < max_iterations:
+            iteration += 1
+            ready = []
+            still_remaining = []
+
+            for task in remaining:
+                depends_on = task.get("depends_on", [])
+                deferred = task.pop("_deferred_unmet", None)
+                unmet = [
+                    d for d in depends_on
+                    if d not in completed_agent_names
+                ]
+                if unmet:
+                    if deferred == unmet:
+                        # 依赖始终无法满足，降级执行避免死等
+                        logger.warning(
+                            "Dependencies still unmet, executing anyway",
+                            extra={
+                                "agent_name": task.get("agent_name"),
+                                "unmet_dependencies": unmet,
+                            },
+                        )
+                        ready.append(task)
+                    else:
+                        task["_deferred_unmet"] = unmet
+                        still_remaining.append(task)
+                else:
+                    ready.append(task)
+
+            if not ready:
+                # 无任务可执行但仍有剩余，避免死循环，全部降级执行
+                logger.warning(
+                    "No ready tasks but remaining exist, executing all remaining",
+                )
+                ready = remaining
+                still_remaining = []
+
+            batch_results = await self._execute_agent_batch(ready, context, previous_results + results)
+            results.extend(batch_results)
+            completed_agent_names.update(
+                r.get("agent_name")
+                for r in batch_results
+                if r.get("result", {}).get("status") != "error"
+            )
+            remaining = still_remaining
+
+        return results
+
+    async def _execute_agent_batch(
+        self,
+        tasks: List[Dict],
+        context: Dict[str, Any],
+        previous_results: List[Dict]
+    ) -> List[Dict]:
+        """执行一批已准备好的 Agent 任务（可并行）。"""
+        if not tasks:
+            return []
+
         if len(tasks) == 1:
             task = tasks[0]
             result = await self._execute_agent(
@@ -223,21 +348,19 @@ class OrchestrationAgent(AgentBase):
                 context=context,
                 reason=task.get("reason", ""),
                 expected_output=task.get("expected_output", ""),
-                previous_results=previous_results
+                previous_results=previous_results,
             )
             return [{
                 "agent_name": task.get("agent_name"),
                 "priority": task.get("priority", 0),
-                "result": result
+                "result": result,
             }]
 
-        # 多个任务并行执行
         logger.info(
             f"Executing {len(tasks)} agents in parallel",
             extra={"agent_count": len(tasks)},
         )
 
-        # 创建并行任务
         parallel_coroutines = []
         for task in tasks:
             agent_name = task.get("agent_name")
@@ -250,23 +373,20 @@ class OrchestrationAgent(AgentBase):
                 extra={"agent_name": agent_name, "priority": priority},
             )
 
-            # 创建协程
             coroutine = self._execute_agent(
                 agent_name=agent_name,
                 context=context,
                 reason=reason,
                 expected_output=expected_output,
-                previous_results=previous_results
+                previous_results=previous_results,
             )
             parallel_coroutines.append((agent_name, priority, coroutine))
 
-        # 使用 asyncio.gather 并行执行
         execution_results = await asyncio.gather(
             *[coro for _, _, coro in parallel_coroutines],
-            return_exceptions=True
+            return_exceptions=True,
         )
 
-        # 整理结果
         results = []
         for (agent_name, priority, _), exec_result in zip(parallel_coroutines, execution_results):
             if isinstance(exec_result, Exception):
@@ -279,7 +399,7 @@ class OrchestrationAgent(AgentBase):
                     "status": "error",
                     "agent_name": agent_name,
                     "data": {"error": str(exec_result)},
-                    "message": f"并行执行失败: {str(exec_result)}"
+                    "message": f"并行执行失败: {str(exec_result)}",
                 }
             else:
                 result = exec_result
@@ -287,7 +407,7 @@ class OrchestrationAgent(AgentBase):
             results.append({
                 "agent_name": agent_name,
                 "priority": priority,
-                "result": result
+                "result": result,
             })
 
         return results
@@ -423,11 +543,14 @@ class OrchestrationAgent(AgentBase):
                 "next_actions": data.get("next_actions", []),
             })
 
-        # 检查是否有错误
+        # 检查是否有错误 / 跳过
         errors = [r for r in results if r["result"].get("status") == "error"]
+        skipped = [r for r in results if r["result"].get("status") == "skipped"]
         if errors:
             aggregated["status"] = "partial_failure"
             aggregated["errors"] = len(errors)
+        if skipped:
+            aggregated["skipped"] = len(skipped)
 
         return aggregated
 

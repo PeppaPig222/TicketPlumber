@@ -31,8 +31,8 @@
 - [x] 30 个原子 Skill 全量落地
 - [x] 多 Agent 角色层真正落地，而不是以 workflow runner 为主
 - [x] 回到 LazyAgentRegistry + Skill 插件化的主链路
-- [ ] 完整调度策略矩阵与降级策略
-- [ ] React + TypeScript + SSE 实时诊断追踪面板
+- [x] 完整调度策略矩阵与降级策略
+- [x] React + TypeScript + SSE 实时诊断追踪面板
 - [x] 正式 RAG 知识库，而不是 mock keyword 检索
 - [x] 工程化完整版：`pydantic-settings` / Docker / 全局结构化日志接线（Batch 6 已收口）
 - [x] 离线评测体系与评测数据集（Batch 7 已收口）
@@ -194,11 +194,11 @@
 
 ### 3.1 调度策略矩阵
 
-- [ ] 抽离基础信息查询的统一并行策略
-- [ ] 抽离深度日志追踪的条件触发策略
-- [ ] 抽离跨域交叉验证的依赖调度策略
-- [ ] 抽离 RAG 与业务 Skill 并行执行策略
-- [ ] 给不同策略补统一配置入口
+- [x] 抽离基础信息查询的统一并行策略
+- [x] 抽离深度日志追踪的条件触发策略
+- [x] 抽离跨域交叉验证的依赖调度策略
+- [x] 抽离 RAG 与业务 Skill 并行执行策略
+- [x] 给不同策略补统一配置入口
 
 ### 3.2 降级策略
 
@@ -210,9 +210,9 @@
 
 ### 3.3 统一错误与状态
 
-- [ ] 在服务层真正接入 `ErrorCode` / `AppError`
-- [ ] 为 API 响应补统一错误结构
-- [ ] 为工具执行结果补统一状态枚举
+- [x] 在服务层真正接入 `ErrorCode` / `AppError`
+- [x] 为 API 响应补统一错误结构
+- [x] 为工具执行结果补统一状态枚举
 
 ---
 
@@ -236,13 +236,13 @@
 - [x] 多 Agent 并行展示
 - [x] Agent 耗时、状态、工具调用展示
 - [x] 右侧诊断结论卡片
-- [ ] 归属方判定矩阵（保留给后续增强）
+- [x] 归属方判定矩阵
 
 ### 4.3 可视化增强
 
 - [x] 红/黄/绿三条路径的视觉区分
 - [x] 诊断总耗时展示
-- [ ] 交叉验证阶段单独高亮（保留给后续增强）
+- [x] 交叉验证阶段单独高亮
 - [x] 降级/异常状态可视化
 
 ---
@@ -372,5 +372,19 @@ core_eval_set.json
 - [x] `pytest tests/test_lazy_agent_registry.py tests/test_rag_integration.py tests/test_tool_registry.py`
 - [x] `python scripts/run_evaluation.py --dataset data/evaluation/core_eval_set.json`
 - [x] 更新 README 与本 TODO 勾选状态
+
+> Batch 3.1 / Batch 3.3 收口时已执行（43 passed）：
+
+- [x] `pytest tests/test_errors.py`
+- [x] `pytest tests/test_strategy_matrix.py`
+- [x] `pytest tests/test_diagnosis_service.py tests/test_diagnosis_api.py tests/test_intention_agent_compat.py tests/test_intention_agent.py tests/test_orchestration_agent.py tests/test_resolution_agent.py tests/test_tool_registry.py`
+- [x] 更新本 TODO 勾选状态
+
+> Batch 4 前端面板增强收口时已执行（65 passed）：
+
+- [x] `npm run build`（frontend）
+- [x] `pytest tests/test_resolution_agent.py tests/test_diagnosis_service.py tests/test_diagnosis_api.py`
+- [x] `pytest tests/test_errors.py tests/test_strategy_matrix.py tests/test_diagnosis_service.py tests/test_diagnosis_api.py tests/test_intention_agent_compat.py tests/test_intention_agent.py tests/test_orchestration_agent.py tests/test_resolution_agent.py tests/test_tool_registry.py tests/test_lazy_agent_registry.py tests/test_rag_integration.py`
+- [x] 更新本 TODO 勾选状态
 
 > 注：CLI / Web / Docker 本地运行验证依赖交互式环境，已在前期批次验证通过；当前环境未安装 Docker，容器化文件按最佳实践编写，可在有 Docker 的环境直接 `docker compose up --build`。
