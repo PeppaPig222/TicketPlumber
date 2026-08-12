@@ -26,7 +26,16 @@ from scripts.process_merchant_pdf import process_document
 
 KNOWLEDGE_BASE_PATH = project_root / "data" / "rag_knowledge"
 DEFAULT_PDF_PATH = project_root / "data" / "documents" / "merchant_architecture.pdf"
+KNOWLEDGE_DIR = project_root / "data" / "knowledge"
 COLLECTION_NAME = "ticket_diagnosis_knowledge"
+
+# 文件名 -> category 映射
+CATEGORY_MAP = {
+    "merchant_architecture": "商户架构文档",
+    "diagnosis_manual": "诊断手册",
+    "history_tickets": "历史工单经验",
+    "faq_policy": "FAQ政策指引",
+}
 
 
 def load_rag_agent_class():
@@ -60,6 +69,43 @@ def validate_embedding_model() -> str:
     return "BAAI/bge-small-zh-v1.5"
 
 
+def _discover_documents(extra_paths: List[Path]) -> List[Path]:
+    """发现所有待导入的 PDF/TXT 文档。"""
+    docs: List[Path] = []
+    seen: set = set()
+
+    candidates: List[Path] = []
+    if KNOWLEDGE_DIR.exists():
+        candidates.extend(sorted(KNOWLEDGE_DIR.iterdir()))
+    for p in extra_paths:
+        if p.is_dir():
+            candidates.extend(sorted(p.iterdir()))
+        elif p.exists():
+            candidates.append(p)
+
+    for p in candidates:
+        if p.suffix.lower() not in {".pdf", ".txt"}:
+            continue
+        key = str(p.resolve())
+        if key in seen:
+            continue
+        seen.add(key)
+        docs.append(p)
+    return docs
+
+
+def _apply_category(documents: List[Dict[str, Any]], file_path: Path) -> List[Dict[str, Any]]:
+    """根据文件名覆盖文档 category。"""
+    category = CATEGORY_MAP.get(file_path.stem, "诊断知识库")
+    for doc in documents:
+        doc["metadata"] = doc.get("metadata", {})
+        doc["metadata"]["category"] = category
+        title = doc["metadata"].get("title", "")
+        if title:
+            doc["metadata"]["title"] = f"[{category}] {title}"
+    return documents
+
+
 async def init_knowledge_base(
     pdf_path: Path,
     reset: bool = False,
@@ -73,21 +119,36 @@ async def init_knowledge_base(
     print("=" * 70)
     print("初始化诊断域 RAG 知识库")
     print("=" * 70)
-    print(f"文档路径: {pdf_path}")
+    print(f"主文档路径: {pdf_path}")
+    print(f"知识目录: {KNOWLEDGE_DIR}")
     print(f"知识库存储: {KNOWLEDGE_BASE_PATH}")
     print(f"Embedding 模型: {embedding_model}")
     print()
 
-    # 切分文档
-    print("1. 切分文档...")
-    documents = process_document(pdf_path)
-    if not documents:
-        print("❌ 未从文档中提取到任何内容")
-        return {"status": "error", "message": "empty document"}
+    # 发现所有文档
+    print("1. 发现并切分文档...")
+    all_documents: List[Dict[str, Any]] = []
+    doc_files = _discover_documents([pdf_path.parent if pdf_path.exists() else project_root / "data" / "documents"])
+    # 确保主文档优先被处理（即使与目录扫描重复也会被去重）
+    if pdf_path.exists():
+        doc_files.insert(0, pdf_path)
 
-    print(f"✓ 共生成 {len(documents)} 个 chunks")
-    print(f"   - 文本 chunks: {sum(1 for d in documents if not d['metadata'].get('has_diagram'))}")
-    print(f"   - 架构图占位 chunks: {sum(1 for d in documents if d['metadata'].get('has_diagram'))}")
+    for doc_path in doc_files:
+        try:
+            docs = process_document(doc_path)
+            docs = _apply_category(docs, doc_path)
+            all_documents.extend(docs)
+            print(f"   ✓ {doc_path.name}: {len(docs)} chunks")
+        except Exception as e:
+            print(f"   ⚠️  {doc_path.name} 处理失败: {e}")
+
+    if not all_documents:
+        print("❌ 未从任何文档中提取到内容")
+        return {"status": "error", "message": "empty documents"}
+
+    print(f"✓ 共生成 {len(all_documents)} 个 chunks")
+    print(f"   - 文本 chunks: {sum(1 for d in all_documents if not d['metadata'].get('has_diagram'))}")
+    print(f"   - 架构图占位 chunks: {sum(1 for d in all_documents if d['metadata'].get('has_diagram'))}")
     print()
 
     # 初始化 RAG Agent（model=None，仅用于 embedding 和检索）
@@ -123,7 +184,7 @@ async def init_knowledge_base(
 
     # 添加文档
     print("4. 写入知识库...")
-    result = await rag_agent.add_documents(documents)
+    result = await rag_agent.add_documents(all_documents)
     if result.get("status") != "success":
         print(f"❌ 写入失败: {result.get('message', 'unknown error')}")
         return {"status": "error", "message": result.get("message")}

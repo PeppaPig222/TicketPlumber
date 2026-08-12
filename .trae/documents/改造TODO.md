@@ -258,9 +258,9 @@
 
 - [x] 支持从商户 PDF/TXT 文档切分并生成 chunks（`scripts/process_merchant_pdf.py`）
 - [x] 对复杂架构图页面生成结构化占位 chunk（图文字碎片 + 上下文关联）
-- [ ] 新建 `data/knowledge/diagnosis_manual.txt`（当前以商户 PDF 为主要来源）
-- [ ] 补历史工单经验文档
-- [ ] 补 FAQ / 政策 / 处理指引文档
+- [x] 新建 `data/knowledge/diagnosis_manual.txt`
+- [x] 补历史工单经验文档
+- [x] 补 FAQ / 政策 / 处理指引文档
 
 ### 5.2 检索链路
 
@@ -385,6 +385,13 @@ core_eval_set.json
 - [x] `npm run build`（frontend）
 - [x] `pytest tests/test_resolution_agent.py tests/test_diagnosis_service.py tests/test_diagnosis_api.py`
 - [x] `pytest tests/test_errors.py tests/test_strategy_matrix.py tests/test_diagnosis_service.py tests/test_diagnosis_api.py tests/test_intention_agent_compat.py tests/test_intention_agent.py tests/test_orchestration_agent.py tests/test_resolution_agent.py tests/test_tool_registry.py tests/test_lazy_agent_registry.py tests/test_rag_integration.py`
+- [x] 更新本 TODO 勾选状态
+
+> Batch 5 知识库数据补充收口时已执行（65 passed）：
+
+- [x] `python scripts/init_diagnosis_kb.py --reset`
+- [x] `pytest tests/test_rag_integration.py`
+- [x] 完整回归测试集 `65 passed`
 - [x] 更新本 TODO 勾选状态
 
 > 注：CLI / Web / Docker 本地运行验证依赖交互式环境，已在前期批次验证通过；当前环境未安装 Docker，容器化文件按最佳实践编写，可在有 Docker 的环境直接 `docker compose up --build`。
