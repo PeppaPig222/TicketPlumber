@@ -20,10 +20,13 @@ class DiagnosisIntentionAgent:
         name: str = "DiagnosisIntentionAgent",
         rag_agent=None,
         strategy_matrix: StrategyMatrix = None,
+        memory_manager=None,
     ):
         self.name = name
         # RAG Agent 用于规则无法识别场景时做知识库 fallback
         self.rag_agent = rag_agent
+        # 统一记忆/RAG 入口；优先使用 memory_manager，未注入则回退 rag_agent
+        self.memory_manager = memory_manager
         # 调度策略矩阵，默认使用内置规则
         self.strategy_matrix = strategy_matrix or StrategyMatrix()
 
@@ -101,7 +104,6 @@ class DiagnosisIntentionAgent:
         kb_hints = []
         if (
             scenario == "generic_ticket_diagnosis"
-            and self.rag_agent is not None
             and RAG_CONFIG.get("enable_intention_fallback", True)
         ):
             kb_results = await self._search_kb(query)
@@ -143,7 +145,21 @@ class DiagnosisIntentionAgent:
         return entities
 
     async def _search_kb(self, query: str) -> List[Dict]:
-        """调用 RAG Agent 检索相关知识。"""
+        """统一通过 memory_manager 检索 RAG 知识；未注入则回退到 rag_agent 直接调用。"""
+        from config import RAG_CONFIG
+
+        if self.memory_manager is not None:
+            try:
+                result = await self.memory_manager.search_knowledge(
+                    query,
+                    use_rewrite=RAG_CONFIG.get("enable_query_rewrite", True),
+                    use_cache=RAG_CONFIG.get("enable_session_cache", True),
+                )
+                return result.get("retrieved_documents", [])
+            except Exception:
+                return []
+
+        # 兼容旧路径：无 memory_manager 时直接调用 rag_agent
         if self.rag_agent is None:
             return []
         try:

@@ -267,6 +267,11 @@
 - [x] 将 RAG 检索接入诊断主链路（IntentionAgent fallback + ResolutionAgent 证据补充）
 - [x] 通过 `DiagnosisService` 统一管理 `RAGKnowledgeAgent` 实例
 - [x] 支持返回来源、命中片段、页码、置信度
+- [x] Memory 与 RAG 接入 Phase 1：
+  - [x] `MemoryManager` 注入 `rag_agent`，提供统一 `search_knowledge` / `rewrite_query_for_rag` / `unified_retrieval` 入口
+  - [x] `DiagnosisService` 创建 `MemoryManager` 时注入 `rag_agent`
+  - [x] `IntentionAgent` / `ResolutionAgent` 统一走 `memory_manager.search_knowledge()`，共享 session 内 RAG 缓存
+  - [x] `config/settings.py` 增加 `enable_query_rewrite` / `enable_session_cache` / `enable_unified_retrieval` 开关
 - [ ] 区分 `SearchHistoryTicket` 与 `SearchPolicyFAQ`（仍复用底层 RAG 检索，待按 collection 拆分）
 
 ### 5.3 测试
@@ -274,6 +279,7 @@
 - [x] 补 RAG 检索命中测试（`tests/test_rag_integration.py`）
 - [x] 补“知识库不可用时的降级测试”
 - [x] 补 PDF 切分与架构图占位测试
+- [x] 补 Memory 与 RAG 接入测试（`tests/test_memory_rag_integration.py`）
 
 ---
 

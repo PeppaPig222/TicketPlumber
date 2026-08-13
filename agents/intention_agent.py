@@ -13,11 +13,14 @@ from agents.diagnosis_intention_agent import DiagnosisIntentionAgent
 class IntentionAgent(AgentBase):
     """兼容旧调用方的诊断意图识别 Agent。"""
 
-    def __init__(self, name: str = "IntentionAgent", model=None, rag_agent=None):
+    def __init__(self, name: str = "IntentionAgent", model=None, rag_agent=None, memory_manager=None):
         super().__init__()
         self.name = name
         self.model = model
-        self._delegate = DiagnosisIntentionAgent(name=name, rag_agent=rag_agent)
+        self.memory_manager = memory_manager
+        self._delegate = DiagnosisIntentionAgent(
+            name=name, rag_agent=rag_agent, memory_manager=memory_manager
+        )
 
     async def reply(self, x: Optional[Union[Msg, List[Msg]]] = None) -> Msg:
         if isinstance(x, list):
@@ -36,6 +39,16 @@ class IntentionAgent(AgentBase):
         return await self._delegate.reply(
             Msg(name="user", content=json.dumps({"query": ""}, ensure_ascii=False), role="user")
         )
+
+    def _parse_payload(self, content) -> dict:
+        if isinstance(content, dict):
+            return dict(content)
+        if isinstance(content, str):
+            try:
+                return json.loads(content)
+            except json.JSONDecodeError:
+                return {"query": content}
+        return {}
 
     def _extract_ticket_payload(self, messages: List[Msg]) -> dict:
         for msg in reversed(messages[:-1]):

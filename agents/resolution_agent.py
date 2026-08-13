@@ -30,7 +30,7 @@ class ResolutionAgent(BaseDiagnosisAgent):
     async def _search_kb(
         self, context: Dict, previous_results: List[Dict] = None
     ) -> Dict:
-        """调用 RAG 知识库补充证据链；优先使用并行 RAG Agent 结果，不可用再直接检索。"""
+        """调用 RAG 知识库补充证据链；优先使用统一 memory_manager 入口，再回退并行 RAG Agent 结果。"""
         from config import RAG_CONFIG
 
         previous_results = previous_results or []
@@ -38,31 +38,31 @@ class ResolutionAgent(BaseDiagnosisAgent):
         if not RAG_CONFIG.get("enable_resolution_evidence", True):
             return {"summary": "", "kb_matches": []}
 
-        # 1. 优先读取并行调度的 RAGKnowledgeAgent 结果
+        # 0. 优先通过统一入口 memory_manager 检索（共享 query rewrite 与 session 缓存）
+        memory_manager = getattr(self, "memory_manager", None)
+        if memory_manager is not None:
+            query = context.get("rewritten_query") or context.get("query") or ""
+            issue_type = context.get("issue_type") or ""
+            search_query = f"{query} {issue_type}".strip() or query
+            try:
+                rag_result = await memory_manager.search_knowledge(
+                    search_query,
+                    collected_facts=context.get("collected_data", {}).get("facts", {}),
+                    use_rewrite=RAG_CONFIG.get("enable_query_rewrite", True),
+                    use_cache=RAG_CONFIG.get("enable_session_cache", True),
+                )
+                docs = rag_result.get("retrieved_documents", []) or []
+                if docs:
+                    return self._format_kb_result(docs)
+            except Exception:
+                pass
+
+        # 1. 回退：读取并行调度的 RAGKnowledgeAgent 结果
         rag_result = self._find_previous_result(previous_results, "RAGKnowledgeAgent")
         if rag_result and rag_result.get("status") == "success":
             docs = rag_result.get("retrieved_documents", []) or []
             if docs:
-                summaries = []
-                kb_matches = []
-                for doc in docs:
-                    content = doc.get("content", "")
-                    metadata = doc.get("metadata", {}) or {}
-                    if content:
-                        summaries.append(content[:200])
-                    kb_matches.append({
-                        "source": metadata.get("source", "unknown"),
-                        "page": metadata.get("page"),
-                        "title": metadata.get("title", ""),
-                        "content": content[:300],
-                        "similarity": metadata.get("similarity") or round(
-                            1.0 - metadata.get("distance", 1.0), 3
-                        ),
-                    })
-                return {
-                    "summary": "知识库参考：" + " | ".join(summaries),
-                    "kb_matches": kb_matches,
-                }
+                return self._format_kb_result(docs)
 
         # 2. 直接检索 RAG（兼容旧路径）
         if self.rag_agent is None:
@@ -97,6 +97,29 @@ class ResolutionAgent(BaseDiagnosisAgent):
             }
         except Exception:
             return {"summary": "", "kb_matches": []}
+
+    def _format_kb_result(self, docs: List[Dict]) -> Dict:
+        """将 RAG 文档列表格式化为 ResolutionAgent 内部使用的 kb 结果。"""
+        summaries = []
+        kb_matches = []
+        for doc in docs:
+            content = doc.get("content", "")
+            metadata = doc.get("metadata", {}) or {}
+            if content:
+                summaries.append(content[:200])
+            kb_matches.append({
+                "source": metadata.get("source", "unknown"),
+                "page": metadata.get("page"),
+                "title": metadata.get("title", ""),
+                "content": content[:300],
+                "similarity": metadata.get("similarity") or round(
+                    1.0 - metadata.get("distance", 1.0), 3
+                ),
+            })
+        return {
+            "summary": "知识库参考：" + " | ".join(summaries),
+            "kb_matches": kb_matches,
+        }
 
     def _build_responsibility_matrix(
         self, scenario: str, previous_results: List[Dict]

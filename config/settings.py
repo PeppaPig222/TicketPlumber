@@ -99,6 +99,23 @@ class RAGSettings(BaseSettings):
         le=1.0,
         description="RAG fallback 采纳最小相似度阈值",
     )
+    enable_query_rewrite: bool = Field(
+        default=True,
+        description="是否启用基于记忆上下文的 RAG query rewrite",
+    )
+    enable_session_cache: bool = Field(
+        default=True,
+        description="是否启用 session 内 RAG 检索结果缓存",
+    )
+    enable_unified_retrieval: bool = Field(
+        default=True,
+        description="是否启用知识库 + 诊断模式库统一检索",
+    )
+    cache_ttl_seconds: int = Field(
+        default=300,
+        ge=0,
+        description="RAG session 缓存 TTL（秒），当前按 session 生命周期管理",
+    )
 
 
 class ResilienceSettings(BaseSettings):

@@ -2,12 +2,13 @@
 记忆管理器 (Memory Manager)
 统一管理三层记忆，提供简单的API
 """
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from .short_term_memory import ShortTermMemory
 from .long_term_memory import LongTermMemory
 from .merchant_profile_store import MerchantProfileStore
 from .diagnosis_pattern_store import DiagnosisPatternStore
 import logging
+import json
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,7 @@ class MemoryManager:
         merchant_id: str = None,
         milvus_client=None,
         embedding_model=None,
+        rag_agent=None,
     ):
         """
         初始化记忆管理器
@@ -42,11 +44,13 @@ class MemoryManager:
             merchant_id: 商户ID（可选，用于商户画像）
             milvus_client: MilvusClient 实例（可选，用于诊断模式库）
             embedding_model: 向量化模型（可选，用于诊断模式库）
+            rag_agent: RAG 知识库 Agent 实例（可选，用于统一检索入口）
         """
         self.user_id = user_id
         self.session_id = session_id
         self.llm_model = llm_model
         self.merchant_id = merchant_id
+        self.rag_agent = rag_agent
 
         # 初始化各层记忆
         self.short_term = ShortTermMemory(max_turns=100)
@@ -60,9 +64,12 @@ class MemoryManager:
             else None
         )
 
+        # Session 内 RAG 检索结果缓存，避免单次诊断中重复调用 RAG
+        self._rag_cache: Dict[str, Any] = {}
+
         logger.info(
             f"Memory manager initialized for user {user_id}, session {session_id}, "
-            f"merchant={merchant_id}"
+            f"merchant={merchant_id}, rag_agent={rag_agent is not None}"
         )
 
     # ========== 短期记忆操作 ==========
@@ -203,6 +210,137 @@ class MemoryManager:
         if not self.pattern_store:
             return []
         return await self.pattern_store.find_similar(query, k=k)
+
+    # ========== RAG 统一接入 ==========
+
+    def _extract_text(self, response) -> str:
+        """从 LLM 响应中提取文本内容。"""
+        if hasattr(response, 'content'):
+            if isinstance(response.content, str):
+                return response.content
+            if isinstance(response.content, list):
+                for item in response.content:
+                    if isinstance(item, dict) and item.get('type') == 'text':
+                        return item.get('text', '')
+        if isinstance(response, str):
+            return response
+        return str(response)
+
+    async def rewrite_query_for_rag(
+        self,
+        current_query: str,
+        collected_facts: Dict[str, Any] = None,
+    ) -> str:
+        """基于短期记忆和已确认事实改写 query，生成独立检索 query。"""
+        from config import RAG_CONFIG
+
+        if not self.llm_model or not RAG_CONFIG.get("enable_query_rewrite", True):
+            return current_query
+
+        recent_dialogue = self.short_term.get_context_string(2)
+        facts = collected_facts or {}
+
+        prompt = f"""根据当前问题、最近对话和已确认事实，生成一个独立的检索 query。
+
+【当前问题】{current_query}
+【最近对话】{recent_dialogue}
+【已确认事实】{facts}
+
+要求：
+1. query 语义完整，不依赖上下文。
+2. 保留关键实体：工单号、商户号、系统模块、异常现象。
+3. 只输出 query，不解释。
+"""
+        try:
+            response = await self.llm_model([{"role": "user", "content": prompt}])
+            return self._extract_text(response).strip() or current_query
+        except Exception as e:
+            logger.warning(f"Query rewrite failed: {e}")
+            return current_query
+
+    def _rag_cache_key(self, query: str) -> str:
+        return f"{self.session_id}:{hash(query)}"
+
+    def get_rag_cache(self, query: str) -> Optional[Dict]:
+        return self._rag_cache.get(self._rag_cache_key(query))
+
+    def set_rag_cache(self, query: str, result: Dict):
+        self._rag_cache[self._rag_cache_key(query)] = result
+
+    async def search_knowledge(
+        self,
+        query: str,
+        collected_facts: Dict[str, Any] = None,
+        use_rewrite: bool = True,
+        use_cache: bool = True,
+    ) -> Dict[str, Any]:
+        """
+        统一的 RAG 检索入口：
+        1. query rewrite（可选）
+        2. session 缓存命中则复用
+        3. 调用 RAGKnowledgeAgent
+        4. 写入缓存
+        """
+        from config import RAG_CONFIG
+        from agentscope.message import Msg
+
+        if use_rewrite and RAG_CONFIG.get("enable_query_rewrite", True):
+            search_query = await self.rewrite_query_for_rag(query, collected_facts)
+        else:
+            search_query = query
+
+        if use_cache and RAG_CONFIG.get("enable_session_cache", True):
+            cached = self.get_rag_cache(search_query)
+            if cached:
+                return cached
+
+        if not self.rag_agent:
+            return {"status": "no_agent", "answer": "", "retrieved_documents": []}
+
+        try:
+            msg = Msg(name="orchestrator", content=search_query, role="user")
+            response = await self.rag_agent.reply(msg)
+            result = json.loads(response.content)
+        except Exception as e:
+            logger.warning(f"MemoryManager search_knowledge failed: {e}")
+            result = {"status": "error", "answer": "", "retrieved_documents": []}
+
+        if use_cache and RAG_CONFIG.get("enable_session_cache", True):
+            self.set_rag_cache(search_query, result)
+
+        return result
+
+    async def unified_retrieval(
+        self,
+        query: str,
+        collected_facts: Dict[str, Any] = None,
+        k: int = 3,
+    ) -> Dict[str, Any]:
+        """
+        统一检索：RAG 知识库 + 诊断模式库
+        """
+        from config import RAG_CONFIG
+
+        rewritten = query
+        if RAG_CONFIG.get("enable_query_rewrite", True):
+            rewritten = await self.rewrite_query_for_rag(query, collected_facts)
+
+        knowledge_result = await self.search_knowledge(
+            rewritten,
+            collected_facts=collected_facts,
+            use_rewrite=False,
+            use_cache=True,
+        )
+
+        similar_patterns = []
+        if RAG_CONFIG.get("enable_unified_retrieval", True):
+            similar_patterns = await self.find_similar_patterns(rewritten, k=k)
+
+        return {
+            "knowledge_docs": knowledge_result.get("retrieved_documents", []),
+            "similar_patterns": similar_patterns,
+            "rewritten_query": rewritten,
+        }
 
     def get_context_for_agent(self, long_term_summary: str = None) -> str:
         """

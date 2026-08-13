@@ -134,11 +134,12 @@ class DiagnosisService:
             },
         )
 
-        # 创建本次诊断专属的三层记忆管理器
+        # 创建本次诊断专属的三层记忆管理器，并注入 rag_agent 统一 RAG 入口
         memory_manager = MemoryManager(
             user_id=effective_user_id,
             session_id=effective_session_id,
             storage_path=self.storage_path,
+            rag_agent=self.rag_agent,
         )
         # 记录用户提问到短期记忆和长期聊天历史
         memory_manager.add_message("user", query, metadata={"trace_id": trace_id})
@@ -178,7 +179,11 @@ class DiagnosisService:
             },
             custom_factories=custom_factories,
         )
-        intention_agent = IntentionAgent(name="IntentionAgent", rag_agent=self.rag_agent)
+        intention_agent = IntentionAgent(
+            name="IntentionAgent",
+            rag_agent=self.rag_agent,
+            memory_manager=memory_manager,
+        )
         orchestrator = OrchestrationAgent(
             name="DiagnosisOrchestrationAgent",
             agent_registry=agent_registry,
