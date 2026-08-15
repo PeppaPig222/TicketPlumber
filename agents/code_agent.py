@@ -16,32 +16,13 @@ class CodeAgent(BaseDiagnosisAgent):
     """技术链路视角的专业诊断 Agent。"""
 
     allowed_skills = {
-        # 订单域
         "get_order_detail",
         "get_order_timeline",
-        "GetOrderRefund",
-        "ReconstructTimeline",
-        "ValidateFrontendState",
-        "order_code_path",
-        # 资产域
         "get_asset_pool",
         "get_asset_allocation",
-        "GetBillingConfig",
-        "GetProductCatalog",
-        # 结算域
         "get_merchant_contract",
         "get_bill_detail",
         "get_settlement_rule",
-        "GetBillCalculation",
-        "GetSettlementStatus",
-        "GetSettlementTimeline",
-        "GetReconciliation",
-        "GetInvoiceStatus",
-        "GetPaymentChannel",
-        "settlement_calculation_path",
-        "settlement_timeline_path",
-        # 通用
-        "search_policy_faq",
     }
 
     async def reply(self, x: Msg = None) -> Msg:
@@ -63,30 +44,11 @@ class CodeAgent(BaseDiagnosisAgent):
 
     async def _round_one(self, context: Dict, scenario: str, previous_results: List[Dict]) -> Msg:
         if scenario == "asset_allocation_failure":
-            skill_names = [
-                "get_asset_pool",
-                "get_asset_allocation",
-                "GetBillingConfig",
-                "GetProductCatalog",
-            ]
+            skill_names = ["get_asset_pool", "get_asset_allocation"]
         elif scenario == "settlement_amount_mismatch":
-            skill_names = [
-                "get_merchant_contract",
-                "get_bill_detail",
-                "get_settlement_rule",
-                "GetBillCalculation",
-                "GetSettlementStatus",
-                "GetSettlementTimeline",
-                "GetReconciliation",
-            ]
+            skill_names = ["get_merchant_contract", "get_bill_detail", "get_settlement_rule"]
         else:
-            skill_names = [
-                "get_order_detail",
-                "get_order_timeline",
-                "GetOrderRefund",
-                "ReconstructTimeline",
-                "ValidateFrontendState",
-            ]
+            skill_names = ["get_order_detail", "get_order_timeline"]
 
         skill_results = [
             await self._run_skill(skill_name, context, "补全代码侧基础上下文", "结构化基础事实", previous_results)

@@ -16,26 +16,11 @@ class OperationAgent(BaseDiagnosisAgent):
     """操作路径视角的专业诊断 Agent。"""
 
     allowed_skills = {
-        # 商户画像
         "get_merchant_profile",
-        "GetMerchantCoopStatus",
-        "GetMerchantContract",
-        "GetMerchantOrgTree",
-        "GetMerchantPermission",
-        "GetMerchantOnboarding",
-        "GetMerchantBlacklist",
-        # 用户/资产操作
-        "get_user_binding",
-        "GetProtectionPeriod",
-        "GetAssetRecycle",
-        "get_asset_allocation",
-        "asset_binding_path",
-        # 订单操作
-        "get_order_timeline",
-        "GetOrderRefund",
-        "order_operation_path",
-        # 历史/策略
         "search_history_ticket",
+        "get_user_binding",
+        "get_asset_allocation",
+        "get_order_timeline",
         "search_policy_faq",
     }
 
@@ -58,26 +43,11 @@ class OperationAgent(BaseDiagnosisAgent):
 
     async def _round_one(self, context: Dict, scenario: str, previous_results: List[Dict]) -> Msg:
         if scenario == "asset_allocation_failure":
-            skill_names = [
-                "get_user_binding",
-                "GetProtectionPeriod",
-                "GetAssetRecycle",
-                "search_history_ticket",
-            ]
+            skill_names = ["get_user_binding", "search_history_ticket"]
         elif scenario == "settlement_amount_mismatch":
-            skill_names = [
-                "GetMerchantCoopStatus",
-                "GetMerchantContract",
-                "search_history_ticket",
-            ]
+            skill_names = ["search_history_ticket"]
         else:
-            skill_names = [
-                "get_merchant_profile",
-                "GetMerchantCoopStatus",
-                "GetMerchantOnboarding",
-                "GetMerchantBlacklist",
-                "search_history_ticket",
-            ]
+            skill_names = ["get_merchant_profile", "search_history_ticket"]
 
         skill_results = [
             await self._run_skill(skill_name, context, "补全操作侧基础上下文", "历史经验与用户侧线索", previous_results)

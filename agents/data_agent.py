@@ -16,26 +16,11 @@ class DataAgent(BaseDiagnosisAgent):
     """数据视角的专业诊断 Agent。"""
 
     allowed_skills = {
-        # 订单数据
         "get_order_detail",
-        "order_data_path",
-        "ReconstructTimeline",
-        "ValidateFrontendState",
-        # 资产数据
         "get_asset_pool",
         "get_asset_allocation",
-        "asset_availability_path",
-        # 结算数据
         "get_bill_detail",
         "get_settlement_rule",
-        "GetBillCalculation",
-        "GetSettlementStatus",
-        "GetSettlementTimeline",
-        "GetReconciliation",
-        "settlement_contract_path",
-        "settlement_calculation_path",
-        # 历史
-        "search_history_ticket",
     }
 
     async def reply(self, x: Msg = None) -> Msg:
@@ -57,28 +42,11 @@ class DataAgent(BaseDiagnosisAgent):
 
     async def _round_one(self, context: Dict, scenario: str, previous_results: List[Dict]) -> Msg:
         if scenario == "asset_allocation_failure":
-            skill_names = [
-                "get_asset_pool",
-                "get_asset_allocation",
-                "asset_availability_path",
-            ]
+            skill_names = ["get_asset_pool", "get_asset_allocation"]
         elif scenario == "settlement_amount_mismatch":
-            skill_names = [
-                "get_bill_detail",
-                "get_settlement_rule",
-                "GetBillCalculation",
-                "GetSettlementStatus",
-                "GetSettlementTimeline",
-                "GetReconciliation",
-                "settlement_contract_path",
-            ]
+            skill_names = ["get_bill_detail", "get_settlement_rule"]
         else:
-            skill_names = [
-                "get_order_detail",
-                "order_data_path",
-                "ReconstructTimeline",
-                "ValidateFrontendState",
-            ]
+            skill_names = ["get_order_detail"]
 
         skill_results = [
             await self._run_skill(skill_name, context, "预加载数据侧核心实体", "后续一致性校验所需事实", previous_results)

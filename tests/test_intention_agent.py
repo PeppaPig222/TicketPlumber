@@ -11,8 +11,6 @@ import json
 import os
 import sys
 
-import pytest
-
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
@@ -21,7 +19,6 @@ from agentscope.message import Msg
 from agents.intention_agent import IntentionAgent
 
 
-@pytest.mark.asyncio
 async def test_intention_agent():
     agent = IntentionAgent(name="IntentionAgent")
 
