@@ -15,6 +15,7 @@
 4. 可扩展 OCR：占位 chunk 中预留说明，后续可接入 PaddleOCR / tesseract 生成图片描述。
 """
 import argparse
+import hashlib
 import json
 import re
 from collections import Counter
@@ -291,6 +292,64 @@ def _build_diagram_summary(
 
 
 # ---------------------------------------------------------------------------
+# 写入去重
+# ---------------------------------------------------------------------------
+
+def compute_content_hash(content: str) -> str:
+    """MD5 文档/段落指纹，用于完全重复去重。"""
+    return hashlib.md5(content.strip().encode("utf-8")).hexdigest()
+
+
+def _overlap_ratio(a: str, b: str) -> float:
+    """基于字符 bigram 的 Jaccard 相似度，衡量相邻 chunk 重叠度。"""
+    if not a or not b:
+        return 0.0
+
+    def bigrams(s: str) -> set:
+        s = s.strip()
+        if len(s) < 2:
+            return {s}
+        return {s[i:i + 2] for i in range(len(s) - 1)}
+
+    ba, bb = bigrams(a), bigrams(b)
+    if not ba or not bb:
+        return 0.0
+    return len(ba & bb) / len(ba | bb)
+
+
+def deduplicate_chunks(
+    chunks: List[Dict[str, Any]],
+    enable_md5: bool = True,
+    enable_boundary: bool = True,
+    overlap_threshold: float = 0.8,
+) -> List[Dict[str, Any]]:
+    """
+    Phase 1 写入去重：
+    1. MD5 指纹去重（完全重复直接跳过）
+    2. 相邻 chunk 边界重叠度 > 阈值时只保留前一个
+    """
+    seen_hashes = set()
+    deduped: List[Dict[str, Any]] = []
+
+    for chunk in chunks:
+        content = chunk.get("content", "")
+        h = compute_content_hash(content)
+        if enable_md5 and h in seen_hashes:
+            continue
+        seen_hashes.add(h)
+
+        if (
+            enable_boundary
+            and deduped
+            and _overlap_ratio(deduped[-1].get("content", ""), content) > overlap_threshold
+        ):
+            continue
+        deduped.append(chunk)
+
+    return deduped
+
+
+# ---------------------------------------------------------------------------
 # 文档加载
 # ---------------------------------------------------------------------------
 
@@ -429,6 +488,28 @@ def process_document(
                     "page_keywords": keywords,
                 },
             })
+
+    # Phase 1 写入去重：MD5 指纹 + 相邻 chunk 边界重叠去重
+    try:
+        from config import RAG_CONFIG
+        enable_md5 = RAG_CONFIG.get("enable_md5_dedup", True)
+        enable_boundary = RAG_CONFIG.get("enable_boundary_dedup", True)
+        overlap_threshold = RAG_CONFIG.get("boundary_overlap_threshold", 0.8)
+    except Exception:
+        enable_md5 = True
+        enable_boundary = True
+        overlap_threshold = 0.8
+
+    if enable_md5 or enable_boundary:
+        before = len(documents)
+        documents = deduplicate_chunks(
+            documents,
+            enable_md5=enable_md5,
+            enable_boundary=enable_boundary,
+            overlap_threshold=overlap_threshold,
+        )
+        if len(documents) < before:
+            print(f"[去重] {before} -> {len(documents)} chunks（MD5/边界重叠去重）")
 
     return documents
 

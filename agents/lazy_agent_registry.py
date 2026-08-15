@@ -4,6 +4,7 @@
 懒加载智能体注册器
 基于 .claude/skills 目录结构的插件化加载机制，并支持显式注册的 Agent 工厂。
 """
+import re
 import sys
 import importlib.util
 import inspect
@@ -19,7 +20,14 @@ class LazyAgentRegistry:
     自动扫描 .claude/skills 下的技能目录，动态加载 script/agent.py
     """
 
-    def __init__(self, model, cache: Dict, memory_manager=None, custom_factories: Optional[Dict[str, Callable[[], Any]]] = None):
+    def __init__(
+        self,
+        model,
+        cache: Dict,
+        memory_manager=None,
+        custom_factories: Optional[Dict[str, Callable[[], Any]]] = None,
+        agent_kwargs: Optional[Dict[str, Any]] = None,
+    ):
         """
         初始化懒加载注册器
 
@@ -27,11 +35,14 @@ class LazyAgentRegistry:
             model: 共享的 LLM 模型实例
             cache: 用于缓存已加载智能体的字典
             memory_manager: 记忆管理器 (可选，用于注入给需要它的 Agent)
+            custom_factories: 自定义 Agent 工厂映射
+            agent_kwargs: 实例化 Agent 时注入的额外参数 (如 skill_registry / rag_agent)
         """
         self.model = model
         self.cache = cache
         self.memory_manager = memory_manager
         self.custom_factories = custom_factories or {}
+        self.agent_kwargs = agent_kwargs or {}
         self.console = Console()
         
         # 技能目录路径
@@ -73,21 +84,32 @@ class LazyAgentRegistry:
                 
         # self.console.print(f"[dim]已发现 {count} 个技能插件[/dim]")
 
-    def _resolve_agent_name(self, agent_name: str) -> Optional[str]:
-        """解析智能体名称到技能目录名"""
-        if agent_name in self.custom_factories:
-            return agent_name
+    @staticmethod
+    def _pascal_to_kebab(name: str) -> str:
+        """PascalCase -> kebab-case，如 CodeAgent -> code-agent。"""
+        return re.sub(r"(?<!^)(?=[A-Z])", "-", name).lower()
 
+    def _resolve_agent_name(self, agent_name: str) -> Optional[str]:
+        """解析智能体名称到技能目录名；skill 目录优先于 custom_factories。"""
         # 1. 直接匹配技能名
         if agent_name in self._skill_map:
             return agent_name
-            
+
         # 2. 尝试遗留映射
         if agent_name in self._legacy_mapping:
             skill_name = self._legacy_mapping[agent_name]
             if skill_name in self._skill_map:
                 return skill_name
-                
+
+        # 3. PascalCase -> kebab-case 别名
+        kebab = self._pascal_to_kebab(agent_name)
+        if kebab in self._skill_map:
+            return kebab
+
+        # 4. custom_factories fallback
+        if agent_name in self.custom_factories:
+            return agent_name
+
         return None
 
     def __getitem__(self, agent_name: str):
@@ -99,10 +121,13 @@ class LazyAgentRegistry:
         if not skill_name:
              raise KeyError(f"Agent '{agent_name}' not found in skills directory")
 
-        if agent_name in self.custom_factories:
-            agent_instance = self.custom_factories[agent_name]()
-            self.cache[agent_name] = agent_instance
-            return agent_instance
+        # skill 目录优先于 custom_factories；custom_factories 作为 fallback
+        if skill_name not in self._skill_map:
+            if agent_name in self.custom_factories:
+                agent_instance = self.custom_factories[agent_name]()
+                self.cache[agent_name] = agent_instance
+                return agent_instance
+            raise KeyError(f"Agent '{agent_name}' not found in skills directory")
 
         script_path = self._skill_map[skill_name]
         
@@ -136,17 +161,21 @@ class LazyAgentRegistry:
                 raise ValueError(f"No AgentBase subclass found in {script_path}")
                 
             # 3. 实例化
-            # 构造参数：name, model, memory_manager (如果需要), **kwargs
+            # 构造参数：name, model, agent_kwargs, memory_manager (如果需要)
             init_params = {
                 "name": agent_name, # 使用请求的名字，或者可以用 skill_name
                 "model": self.model,
             }
-            
+
+            # 注入 agent_kwargs（如 skill_registry / rag_agent），但不覆盖 name/model
+            for key, value in self.agent_kwargs.items():
+                init_params.setdefault(key, value)
+
             # 检查是否需要 memory_manager
             sig = inspect.signature(agent_class.__init__)
             if "memory_manager" in sig.parameters:
                 init_params["memory_manager"] = self.memory_manager
-                
+
             agent_instance = agent_class(**init_params)
             
             # 4. 缓存

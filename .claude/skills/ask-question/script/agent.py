@@ -19,11 +19,15 @@ pip install milvus sentence-transformers
 from agentscope.agent import AgentBase
 from agentscope.message import Msg
 from typing import Optional, Union, List, Dict
+from collections import OrderedDict
+import hashlib
 import json
 import logging
 import os
 from pathlib import Path
 from typing import Any, Optional
+
+import numpy as np
 
 # Add project root to sys.path
 import sys
@@ -75,6 +79,17 @@ class RAGKnowledgeAgent(AgentBase):
         self.top_k = top_k
         from utils.skill_loader import SkillLoader
         self.skill_loader = SkillLoader()
+
+        # ── 检索增强：缓存与检索配置 ──
+        self._retrieval_config: Dict[str, Any] = {}
+        try:
+            from config import RAG_CONFIG
+            self._retrieval_config = dict(RAG_CONFIG)
+        except Exception:
+            pass
+
+        self._empty_result_cache: set = set()          # L3 空值缓存
+        self._query_embedding_cache: OrderedDict = OrderedDict()  # L5 本地 LRU
 
         if not DEPENDENCIES_AVAILABLE:
             logger.error("RAG dependencies not installed. Install with: pip install pymilvus sentence-transformers")
@@ -218,7 +233,7 @@ class RAGKnowledgeAgent(AgentBase):
 
     async def search_knowledge(self, query: str, top_k: Optional[int] = None) -> List[Dict]:
         """
-        检索知识库
+        检索知识库（带缓存穿透防御 + 检索增强）
 
         Args:
             query: 查询文本
@@ -230,19 +245,37 @@ class RAGKnowledgeAgent(AgentBase):
         if not self.initialized:
             return []
 
-        try:
-            # 确保连接正常
-            await self._ensure_connection()
-            k = top_k or self.top_k
+        # L1: 参数校验
+        if not self._validate_query(query):
+            return []
 
-            # 生成查询向量
-            query_embedding = self.embedding_model.encode(query).tolist()
+        # L3: 空值缓存命中，直接返回空结果
+        if self._retrieval_config.get("enable_empty_result_cache", True) and self._is_empty_result(query):
+            return []
+
+        try:
+            # 确保连接正常 + collection 已加载（避免 released 状态）
+            await self._ensure_connection()
+            self._ensure_collection_loaded()
+
+            k = top_k or self._retrieval_config.get("final_top_k") or self.top_k
+            # Phase 1: 内部召回放大，再后处理去重截断
+            recall_k = max(k * 5, int(self._retrieval_config.get("recall_top_k", 15)))
+
+            # L5: embedding 本地 LRU 缓存
+            query_embedding = None
+            if self._retrieval_config.get("enable_embedding_cache", True):
+                query_embedding = self._get_cached_embedding(query)
+            if query_embedding is None:
+                query_embedding = self.embedding_model.encode(query).tolist()
+                if self._retrieval_config.get("enable_embedding_cache", True):
+                    self._cache_embedding(query, query_embedding)
 
             # 在 Milvus 中检索
             results = self.milvus_client.search(
                 collection_name=self.collection_name,
                 data=[query_embedding],
-                limit=k,
+                limit=recall_k,
                 output_fields=["id", "content", "metadata"]
             )
 
@@ -254,7 +287,7 @@ class RAGKnowledgeAgent(AgentBase):
                     metadata_str = hit.get("entity", {}).get("metadata", "{}")
                     try:
                         metadata = json.loads(metadata_str)
-                    except:
+                    except Exception:
                         metadata = {}
 
                     retrieved_docs.append({
@@ -264,12 +297,118 @@ class RAGKnowledgeAgent(AgentBase):
                         'distance': hit.get("distance", 0.0)
                     })
 
-            logger.info(f"Retrieved {len(retrieved_docs)} documents for query: {query[:50]}")
-            return retrieved_docs
+            # 向量阈值去重
+            if self._retrieval_config.get("enable_similarity_dedup", True):
+                retrieved_docs = self._dedup_by_similarity(
+                    retrieved_docs,
+                    threshold=self._retrieval_config.get("similarity_dedup_threshold") or None,
+                )
+
+            # 父文档召回（补充来源页信息）
+            if self._retrieval_config.get("enable_parent_document_recall", True):
+                retrieved_docs = self._parent_document_recall(retrieved_docs)
+
+            # 截断到最终 top_k
+            final = retrieved_docs[:k]
+
+            # L3: 标记空结果，避免后续重复穿透
+            if not final and self._retrieval_config.get("enable_empty_result_cache", True):
+                self._mark_empty_result(query)
+
+            logger.info(f"Retrieved {len(final)} documents for query: {query[:50]}")
+            return final
 
         except Exception as e:
             logger.error(f"Error searching knowledge: {e}")
             return []
+
+    # ───────────── 检索增强辅助方法 ─────────────
+
+    def _validate_query(self, query: str) -> bool:
+        """L1: 参数校验，拦截非法 query。"""
+        if not query or not isinstance(query, str):
+            return False
+        query = query.strip()
+        return 2 <= len(query) <= 500
+
+    def _get_cached_embedding(self, query: str):
+        """L5: query -> embedding 本地 LRU 缓存读取。"""
+        if query in self._query_embedding_cache:
+            self._query_embedding_cache.move_to_end(query)
+            return self._query_embedding_cache[query]
+        return None
+
+    def _cache_embedding(self, query: str, embedding: List[float]):
+        """L5: query -> embedding 本地 LRU 缓存写入。"""
+        maxsize = int(self._retrieval_config.get("embedding_cache_size", 512))
+        self._query_embedding_cache[query] = embedding
+        if len(self._query_embedding_cache) > maxsize:
+            self._query_embedding_cache.popitem(last=False)
+
+    def _is_empty_result(self, query: str) -> bool:
+        """L3: 空值缓存判断。"""
+        return hash(query) in self._empty_result_cache
+
+    def _mark_empty_result(self, query: str):
+        """L3: 标记空结果。"""
+        self._empty_result_cache.add(hash(query))
+
+    def _ensure_collection_loaded(self):
+        """确保 collection 处于 loaded 状态，避免 Milvus Lite released 报错。"""
+        try:
+            self.milvus_client.load_collection(self.collection_name)
+        except Exception:
+            # 已加载或方法不支持时忽略
+            pass
+
+    def _dedup_by_similarity(self, docs: List[Dict], threshold: float = None) -> List[Dict]:
+        """
+        基于余弦相似度去重：
+        - 计算所有结果两两相似度
+        - 动态阈值 = Mean + 1.5 * Std（上限 0.92）
+        - 超过阈值且后出现的 doc 被丢弃
+        """
+        if len(docs) <= 1:
+            return docs
+
+        try:
+            embeddings = [self.embedding_model.encode(d["content"]) for d in docs]
+        except Exception:
+            return docs
+
+        n = len(embeddings)
+        norms = [float(np.linalg.norm(e)) for e in embeddings]
+        matrix = np.zeros((n, n))
+        for i in range(n):
+            matrix[i][i] = 1.0
+            for j in range(i + 1, n):
+                if norms[i] > 0 and norms[j] > 0:
+                    sim = float(np.dot(embeddings[i], embeddings[j]) / (norms[i] * norms[j]))
+                    matrix[i][j] = sim
+                    matrix[j][i] = sim
+
+        mean = float(np.mean(matrix))
+        std = float(np.std(matrix))
+        thr = threshold or min(mean + 1.5 * std, 0.92)
+
+        kept_indices: List[int] = []
+        for i in range(n):
+            is_dup = any(matrix[i][j] > thr and i > j for j in kept_indices)
+            if not is_dup:
+                kept_indices.append(i)
+
+        return [docs[i] for i in kept_indices]
+
+    def _parent_document_recall(self, docs: List[Dict]) -> List[Dict]:
+        """
+        父文档召回：从 metadata 补充来源页信息。
+        后续可扩展为读取原始文档的 ±200 字符上下文。
+        """
+        for doc in docs:
+            meta = doc.get("metadata", {})
+            if "page" in meta:
+                doc["content"] = f"[来源: 第{meta['page']}页]\n{doc['content']}"
+        return docs
 
     def _extract_text(self, content: Any) -> str:
         """从 LLM 消息格式中提取纯文本"""

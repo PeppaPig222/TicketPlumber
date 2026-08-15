@@ -118,6 +118,63 @@ class RAGSettings(BaseSettings):
         description="RAG session 缓存 TTL（秒），当前按 session 生命周期管理",
     )
 
+    # ── 检索增强：缓存层 ──
+    enable_embedding_cache: bool = Field(
+        default=True,
+        description="是否启用 query embedding 本地 LRU 缓存",
+    )
+    embedding_cache_size: int = Field(
+        default=512,
+        ge=1,
+        description="embedding 缓存最大条目数",
+    )
+    enable_empty_result_cache: bool = Field(
+        default=True,
+        description="是否启用空结果缓存，避免无效 query 反复穿透",
+    )
+
+    # ── 检索增强：检索层 ──
+    recall_top_k: int = Field(
+        default=15,
+        ge=1,
+        description="Milvus 内部召回数量（去重前）",
+    )
+    final_top_k: int = Field(
+        default=3,
+        ge=1,
+        description="返回给 Agent 的最终结果数量",
+    )
+    enable_similarity_dedup: bool = Field(
+        default=True,
+        description="是否启用召回结果向量阈值去重",
+    )
+    similarity_dedup_threshold: float = Field(
+        default=0.0,
+        ge=0.0,
+        le=1.0,
+        description="去重余弦相似度阈值；0 表示动态阈值 Mean+1.5σ（上限 0.92）",
+    )
+    enable_parent_document_recall: bool = Field(
+        default=True,
+        description="是否启用父文档召回（补充来源页信息）",
+    )
+
+    # ── 检索增强：知识库构建层 ──
+    enable_md5_dedup: bool = Field(
+        default=True,
+        description="知识库写入时是否启用 MD5 指纹去重",
+    )
+    enable_boundary_dedup: bool = Field(
+        default=True,
+        description="知识库写入时是否启用相邻 chunk 边界重叠去重",
+    )
+    boundary_overlap_threshold: float = Field(
+        default=0.8,
+        ge=0.0,
+        le=1.0,
+        description="相邻 chunk 边界重叠去重阈值",
+    )
+
 
 class MemorySettings(BaseSettings):
     """记忆系统存储配置"""

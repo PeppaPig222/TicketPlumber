@@ -3,13 +3,13 @@
 """
 诊断专业 Agent 的公共基类。
 """
+from __future__ import annotations
+
 import json
 from typing import Any, Dict, Iterable, List, Optional
 
 from agentscope.agent import AgentBase
 from agentscope.message import Msg
-
-from skills.registry import SkillRegistry
 
 
 class BaseDiagnosisAgent(AgentBase):
@@ -23,14 +23,18 @@ class BaseDiagnosisAgent(AgentBase):
         model=None,
         skill_registry: Optional[SkillRegistry] = None,
         memory_manager=None,
+        rag_agent=None,
         **kwargs,
     ):
         super().__init__()
         _ = kwargs
         self.name = name
         self.model = model
+        # 延迟导入，避免与 skills.registry 的循环依赖
+        from skills.registry import SkillRegistry
         self.skill_registry = skill_registry or SkillRegistry()
         self.memory_manager = memory_manager
+        self.rag_agent = rag_agent
 
     def _parse_payload(self, msg: Optional[Msg]) -> Dict[str, Any]:
         if not msg or not getattr(msg, "content", None):
