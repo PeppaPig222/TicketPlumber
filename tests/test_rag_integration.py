@@ -6,7 +6,7 @@ RAG 与诊断链路集成测试。
 覆盖：
 - PDF/TXT 文档切分（含架构图占位）
 - RAGKnowledgeAgent 初始化与检索（依赖可选）
-- IntentionAgent 的 RAG fallback
+- DiagnosisIntentionAgent 的 RAG fallback
 - ResolutionAgent 的 RAG 证据补充
 - DiagnosisService 的 rag_available 指标
 """
@@ -22,7 +22,7 @@ from agentscope.message import Msg
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
-from agents.intention_agent import IntentionAgent
+from agents.diagnosis_intention_agent import DiagnosisIntentionAgent
 from agents.resolution_agent import ResolutionAgent
 from scripts.process_merchant_pdf import process_document
 
@@ -109,7 +109,7 @@ async def test_intention_agent_rag_fallback_above_threshold():
             distance=0.25,
         )
     ]
-    agent = IntentionAgent(name="IntentionAgent", rag_agent=FakeRAGAgent(fake_kb))
+    agent = DiagnosisIntentionAgent(name="DiagnosisIntentionAgent", rag_agent=FakeRAGAgent(fake_kb))
 
     # 使用不含明显关键词的查询，触发 RAG fallback
     query = "商户反馈本月到账金额少了"
@@ -132,7 +132,7 @@ async def test_intention_agent_rag_fallback_below_threshold():
             distance=0.6,
         )
     ]
-    agent = IntentionAgent(name="IntentionAgent", rag_agent=FakeRAGAgent(fake_kb))
+    agent = DiagnosisIntentionAgent(name="DiagnosisIntentionAgent", rag_agent=FakeRAGAgent(fake_kb))
 
     query = "商户反馈本月到账金额少了"
     result = await agent.reply(Msg(name="user", content=query, role="user"))
@@ -148,7 +148,7 @@ async def test_intention_agent_rag_fallback_below_threshold():
 
 @pytest.mark.asyncio
 async def test_intention_agent_rule_still_works_without_rag():
-    agent = IntentionAgent(name="IntentionAgent")
+    agent = DiagnosisIntentionAgent(name="DiagnosisIntentionAgent")
 
     result = await agent.reply(
         Msg(name="user", content="订单 ORD-8823 退款后状态还是待退款", role="user")

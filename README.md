@@ -7,8 +7,8 @@
 ## 项目特点
 
 - 主链路分层：
-  - `IntentionAgent`
-  - `OrchestrationAgent`
+  - `DiagnosisIntentionAgent`
+  - `Scheduler`
   - `LazyAgentRegistry`
   - `Memory`
   - `Skill` 插件化
@@ -47,7 +47,7 @@ DiagBot 不直接替代人工修复，而是先把排查过程中的信息收集
 更准确的描述是：
 
 - **复用的部分**
-  - `IntentionAgent -> OrchestrationAgent -> LazyAgentRegistry` 的主链路分层
+  - `DiagnosisIntentionAgent -> Scheduler -> LazyAgentRegistry` 的主链路分层
   - priority 并行调度
   - 长短期记忆机制
   - 重试、熔断、结构化输出兜底
@@ -67,10 +67,10 @@ DiagBot 不直接替代人工修复，而是先把排查过程中的信息收集
 User / CLI / Web / API
         |
         v
-IntentionAgent
+DiagnosisIntentionAgent
         |
         v
-OrchestrationAgent
+Scheduler
         |
         v
 LazyAgentRegistry
@@ -102,7 +102,7 @@ LazyAgentRegistry
 CLI / HTTP Request
   -> DiagnosisService
   -> DiagnosisIntentionAgent
-  -> OrchestrationAgent
+  -> Scheduler
   -> SkillRegistry / Diagnosis Agents
   -> LoopDecider
   -> TraceCollector
@@ -113,8 +113,8 @@ CLI / HTTP Request
 
 ```text
 CLI / HTTP Request
-  -> IntentionAgent
-  -> OrchestrationAgent
+  -> DiagnosisIntentionAgent
+  -> Scheduler
   -> LazyAgentRegistry
   -> CodeAgent / OperationAgent / DataAgent / ResolutionAgent
   -> SkillRegistry
@@ -134,16 +134,14 @@ CLI / HTTP Request
   - 提供诊断、trace 查询和 SSE 回放接口
 - `services/diagnosis_service.py`
   - 当前诊断 facade
-  - 串联 Intention、Orchestration、Loop、Trace 和历史记录
+  - 串联 Intention、Scheduler、Loop、Trace 和历史记录
 
 ### Agent 层
 
 - `agents/diagnosis_intention_agent.py`
-  - 工单诊断场景下的意图识别与调度建议
-- `agents/intention_agent.py`
-  - 兼容旧调用点的诊断意图入口
-- `agents/orchestration_agent.py`
-  - 轮内 priority 并行调度与结果聚合
+  - 工单诊断场景下的意图识别与实体提取
+- `agents/scheduler.py`
+  - 轮内 priority 并行调度与结果聚合（确定性逻辑，非 Agent）
 - `agents/diagnosis_agents.py`
   - 当前诊断路径执行实现
 - `agents/loop_decider.py`
@@ -349,7 +347,7 @@ pytest tests/test_intention_agent.py tests/test_cli_qa.py
 
 ```text
 .
-├── agents/          # Intention / Orchestration / Loop / Diagnosis Agents
+├── agents/          # Intention / Scheduler / Loop / Diagnosis Agents
 ├── api/             # FastAPI 入口
 ├── context/         # 长短期记忆
 ├── data/mock/       # 演示用 mock 数据

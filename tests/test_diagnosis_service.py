@@ -103,7 +103,7 @@ async def test_diagnosis_service_survives_intention_agent_failure():
 
         # 注入坏 IntentionAgent
         intention_agent = BadIntentionAgent()
-        from agents.orchestration_agent import OrchestrationAgent
+        from agents.scheduler import Scheduler
         from agents.lazy_agent_registry import LazyAgentRegistry
 
         agent_registry = LazyAgentRegistry(
@@ -115,10 +115,11 @@ async def test_diagnosis_service_survives_intention_agent_failure():
                 "rag_agent": service.rag_agent,
             },
         )
-        orchestrator = OrchestrationAgent(
-            name="DiagnosisOrchestrationAgent",
+        scheduler = Scheduler(
+            name="DiagnosisScheduler",
             agent_registry=agent_registry,
             memory_manager=memory_manager,
+            rag_available=service.rag_agent is not None,
         )
 
         final_decision = "done"
@@ -154,8 +155,7 @@ async def test_diagnosis_service_survives_intention_agent_failure():
                 )
 
             trace.start_round(round_num, intent=intention_data.get("intent", ""))
-            orchestration_result = await orchestrator.reply(intention_result)
-            round_result = json.loads(orchestration_result.content)
+            round_result = await scheduler.run(intention_data)
 
             service._record_trace(trace, round_result)
             service._merge_round_result(state, intention_data, round_result)
@@ -179,17 +179,17 @@ async def test_diagnosis_service_survives_intention_agent_failure():
 
 
 @pytest.mark.asyncio
-async def test_diagnosis_service_survives_orchestrator_failure():
-    """OrchestrationAgent 抛异常时，DiagnosisService 应返回部分结果，不崩溃。"""
+async def test_diagnosis_service_survives_scheduler_failure():
+    """Scheduler 抛异常时，DiagnosisService 应返回部分结果，不崩溃。"""
     service = DiagnosisService(trace_repo=TraceRepository())
 
-    class BadOrchestrator:
-        async def reply(self, _x=None):
-            raise RuntimeError("模拟编排失败")
+    class BadScheduler:
+        async def run(self, _x=None):
+            raise RuntimeError("模拟调度失败")
 
     import json as _json
     from agentscope.message import Msg
-    from agents.intention_agent import IntentionAgent
+    from agents.diagnosis_intention_agent import DiagnosisIntentionAgent
     from utils.trace_collector import TraceCollector
     from utils.logging_config import set_trace_id
     from context.memory_manager import MemoryManager
@@ -219,8 +219,8 @@ async def test_diagnosis_service_survives_orchestrator_failure():
     )
     trace = TraceCollector(ticket_id=ticket.get("ticket_id", ""))
 
-    intention_agent = IntentionAgent(name="IntentionAgent")
-    orchestrator = BadOrchestrator()
+    intention_agent = DiagnosisIntentionAgent(name="DiagnosisIntentionAgent")
+    scheduler = BadScheduler()
 
     intention_payload = {
         "query": query,
@@ -244,8 +244,7 @@ async def test_diagnosis_service_survives_orchestrator_failure():
     trace.start_round(1, intent=intention_data.get("intent", ""))
 
     try:
-        orchestration_result = await orchestrator.reply(intention_result)
-        round_result = _json.loads(orchestration_result.content)
+        round_result = await scheduler.run(intention_data)
     except Exception as e:
         round_result = service._fallback_round_result(1, e)
 
@@ -260,6 +259,6 @@ async def test_diagnosis_service_survives_orchestrator_failure():
     # 即使编排失败，也应返回一个可解释的响应
     assert diagnosis["status"] in {"completed", "partial_failure"}
     assert diagnosis["trace"]["total_rounds"] == 1
-    # trace 中 OrchestrationAgent 节点应为 degraded
+    # trace 中 Scheduler 节点应为 degraded
     agents = diagnosis["trace"]["rounds"][0]["agents"]
     assert any(a.get("status") == "degraded" for a in agents)

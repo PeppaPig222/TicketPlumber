@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-工单诊断服务：串起 IntentionAgent、OrchestrationAgent、LoopDecider 与 TraceCollector。
+工单诊断服务：串起 DiagnosisIntentionAgent、Scheduler、LoopDecider 与 TraceCollector。
 """
 import json
 import logging
@@ -17,10 +17,10 @@ from agentscope.message import Msg
 
 logger = logging.getLogger(__name__)
 
-from agents.intention_agent import IntentionAgent
+from agents.diagnosis_intention_agent import DiagnosisIntentionAgent
 from agents.lazy_agent_registry import LazyAgentRegistry
 from agents.loop_decider import LoopDecider
-from agents.orchestration_agent import OrchestrationAgent
+from agents.scheduler import Scheduler
 from context.diagnosis_state import DiagnosisState
 from context.long_term_memory import LongTermMemory
 from context.memory_manager import MemoryManager
@@ -178,15 +178,16 @@ class DiagnosisService:
             },
             custom_factories=custom_factories,
         )
-        intention_agent = IntentionAgent(
+        intention_agent = DiagnosisIntentionAgent(
             name="IntentionAgent",
             rag_agent=self.rag_agent,
             memory_manager=memory_manager,
         )
-        orchestrator = OrchestrationAgent(
-            name="DiagnosisOrchestrationAgent",
+        scheduler = Scheduler(
+            name="DiagnosisScheduler",
             agent_registry=agent_registry,
             memory_manager=memory_manager,
+            rag_available=self.rag_agent is not None,
         )
 
         final_decision = "done"
@@ -249,11 +250,10 @@ class DiagnosisService:
             trace.start_round(round_num, intent=intention_data.get("intent", ""))
 
             try:
-                orchestration_result = await orchestrator.reply(intention_result)
-                round_result = json.loads(orchestration_result.content)
-                agent_names = [a.get("agent_name", "") for a in round_result.get("agents", [])]
+                round_result = await scheduler.run(intention_data)
+                agent_names = [a.get("agent_name", "") for a in round_result.get("results", [])]
                 logger.info(
-                    "OrchestrationAgent 完成本轮调度",
+                    "Scheduler 完成本轮调度",
                     extra={
                         "round_num": round_num,
                         "trace_id": trace_id,
@@ -263,7 +263,7 @@ class DiagnosisService:
                 )
             except Exception as e:
                 logger.error(
-                    f"OrchestrationAgent failed in round {round_num}: {e}",
+                    f"Scheduler failed in round {round_num}: {e}",
                     extra={"round_num": round_num, "trace_id": trace_id},
                 )
                 round_result = self._fallback_round_result(round_num, e)
@@ -369,10 +369,9 @@ class DiagnosisService:
         return {}
 
     def _fallback_intention(self, round_num: int, query: str, state: DiagnosisState) -> Dict[str, Any]:
-        """IntentionAgent 失败时的规则回退意图。"""
-        scenario = (
-            state.facts.get("scenario")
-            or "generic_ticket_diagnosis"
+        """IntentionAgent 失败时的规则回退意图：只输出 scenario + key_entities，调度交给 Scheduler。"""
+        scenario = state.facts.get("scenario") or self._scenario_from_issue_type(
+            state.facts.get("issue_type", "")
         )
         return {
             "intent": "ticket_diagnosis",
@@ -393,36 +392,20 @@ class DiagnosisService:
             "query": query,
             "collected_data": state.to_intention_collected_data(),
             "error_code": ErrorCode.INTENT_RECOGNITION_FAILED.value[0],
-            "agent_schedule": [
-                {
-                    "agent_name": "CodeAgent",
-                    "priority": 1,
-                    "reason": "规则兜底调度",
-                    "expected_output": "技术侧线索",
-                },
-                {
-                    "agent_name": "OperationAgent",
-                    "priority": 1,
-                    "reason": "规则兜底调度",
-                    "expected_output": "操作侧线索",
-                },
-                {
-                    "agent_name": "DataAgent",
-                    "priority": 1,
-                    "reason": "规则兜底调度",
-                    "expected_output": "数据侧线索",
-                },
-                {
-                    "agent_name": "ResolutionAgent",
-                    "priority": 2,
-                    "reason": "规则兜底调度",
-                    "expected_output": "归因建议",
-                },
-            ],
         }
 
+    @staticmethod
+    def _scenario_from_issue_type(issue_type: str) -> str:
+        if "结算" in (issue_type or ""):
+            return "settlement_amount_mismatch"
+        if "资产" in (issue_type or ""):
+            return "asset_allocation_failure"
+        if "订单" in (issue_type or ""):
+            return "order_status_anomaly"
+        return "generic_ticket_diagnosis"
+
     def _fallback_round_result(self, round_num: int, error: Exception) -> Dict[str, Any]:
-        """OrchestrationAgent 失败时的部分结果。"""
+        """Scheduler 失败时的部分结果。"""
         return {
             "status": "partial_failure",
             "errors": 1,
@@ -430,11 +413,11 @@ class DiagnosisService:
             "error_code": ErrorCode.ORCHESTRATION_FAILED.value[0],
             "results": [
                 {
-                    "agent_name": "OrchestrationAgent",
+                    "agent_name": "Scheduler",
                     "priority": 0,
                     "status": "degraded",
                     "data": {"error": str(error)},
-                    "summary": f"第{round_num}轮编排失败，已降级并继续诊断",
+                    "summary": f"第{round_num}轮调度失败，已降级并继续诊断",
                     "duration_ms": 0,
                     "tools_called": [],
                     "recommended_skills": [],

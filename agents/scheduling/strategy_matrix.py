@@ -12,7 +12,7 @@
 1. 默认配置下输出与现有 _build_schedule 完全一致，保证回归测试不降级。
 2. 规则可独立开关，通过 SCHEDULING_CONFIG 统一配置。
 3. 新增字段（depends_on / required_entities / skip_if_missing）仅作为提示，
-   OrchestrationAgent 可选择性实现；旧编排器忽略这些字段仍能运行。
+   Scheduler 可选择性实现；旧编排器忽略这些字段仍能运行。
 """
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -283,7 +283,7 @@ class ScenarioScheduleBuilder(ScheduleBuilder):
 class BasicInfoParallelRule(SchedulingRule):
     """基础信息查询统一并行策略
 
-    将第一轮的基础信息收集类任务统一放到同一 priority，便于 OrchestrationAgent
+    将第一轮的基础信息收集类任务统一放到同一 priority，便于 Scheduler
     一次性并行执行。默认它们已经是同一 priority，本规则主要做显式标记。
     """
 

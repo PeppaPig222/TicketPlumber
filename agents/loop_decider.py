@@ -25,7 +25,7 @@ class LoopDecider:
         根据当前轮次结果决定下一步
 
         Args:
-            round_result: 当前轮 OrchestrationAgent 的聚合结果
+            round_result: 当前轮 Scheduler 的聚合结果
             round_num: 当前轮次编号 (1-based)
 
         Returns:

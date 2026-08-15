@@ -1,11 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-import json
 import os
 import sys
 
 import pytest
-from agentscope.message import Msg
 
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
@@ -14,13 +12,13 @@ from agents.code_agent import CodeAgent
 from agents.data_agent import DataAgent
 from agents.lazy_agent_registry import LazyAgentRegistry
 from agents.operation_agent import OperationAgent
-from agents.orchestration_agent import OrchestrationAgent
 from agents.resolution_agent import ResolutionAgent
+from agents.scheduler import Scheduler
 from skills.registry import SkillRegistry
 
 
 @pytest.mark.asyncio
-async def test_orchestration_agent_uses_lazy_registry_with_professional_agents():
+async def test_scheduler_uses_lazy_registry_with_professional_agents():
     skill_registry = SkillRegistry()
     lazy_registry = LazyAgentRegistry(
         model=None,
@@ -32,7 +30,7 @@ async def test_orchestration_agent_uses_lazy_registry_with_professional_agents()
             "ResolutionAgent": lambda: ResolutionAgent(name="ResolutionAgent", skill_registry=skill_registry),
         },
     )
-    orchestrator = OrchestrationAgent(name="OrchestrationAgent", agent_registry=lazy_registry)
+    scheduler = Scheduler(name="Scheduler", agent_registry=lazy_registry)
     intention_data = {
         "scenario": "order_status_anomaly",
         "round_num": 3,
@@ -45,12 +43,6 @@ async def test_orchestration_agent_uses_lazy_registry_with_professional_agents()
             "issue_type": "订单状态异常",
             "scenario": "order_status_anomaly",
         },
-        "agent_schedule": [
-            {"agent_name": "CodeAgent", "priority": 1, "reason": "复核代码链路", "expected_output": "技术复核"},
-            {"agent_name": "OperationAgent", "priority": 1, "reason": "复核业务流程", "expected_output": "操作复核"},
-            {"agent_name": "DataAgent", "priority": 1, "reason": "复核数据异常", "expected_output": "数据复核"},
-            {"agent_name": "ResolutionAgent", "priority": 2, "reason": "汇总结论", "expected_output": "根因与建议"},
-        ],
         "collected_data": {
             "facts": {
                 "ticket_id": "WO-20260815-0421",
@@ -62,8 +54,7 @@ async def test_orchestration_agent_uses_lazy_registry_with_professional_agents()
         },
     }
 
-    result = await orchestrator.reply(Msg(name="user", content=json.dumps(intention_data, ensure_ascii=False), role="user"))
-    payload = json.loads(result.content)
+    payload = await scheduler.run(intention_data)
 
     assert payload["status"] == "completed"
     agent_names = [item["agent_name"] for item in payload["results"]]

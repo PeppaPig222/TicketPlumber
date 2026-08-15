@@ -79,7 +79,7 @@ def _degraded_summary(tool_name: str, fallback: str = "") -> str:
 
 
 class DiagnosticAgent:
-    """轻量诊断 Agent，兼容现有 OrchestrationAgent 的调用协议。"""
+    """轻量诊断 Agent，通过 Msg/reply 协议供调度层调用。"""
 
     def __init__(self, name: str, runner: AgentRunner):
         self.name = name

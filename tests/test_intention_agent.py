@@ -18,12 +18,12 @@ sys.path.insert(0, project_root)
 
 from agentscope.message import Msg
 
-from agents.intention_agent import IntentionAgent
+from agents.diagnosis_intention_agent import DiagnosisIntentionAgent
 
 
 @pytest.mark.asyncio
 async def test_intention_agent():
-    agent = IntentionAgent(name="IntentionAgent")
+    agent = DiagnosisIntentionAgent(name="DiagnosisIntentionAgent")
 
     test_cases = [
         {"name": "订单状态异常", "query": "请诊断工单 WO-20260815-0421"},
@@ -61,10 +61,6 @@ def display_result(result):
         if value:
             print(f"  - {key}: {value}")
     print()
-
-    print("【调度计划】")
-    for item in result.get("agent_schedule", []):
-        print(f"  - P{item.get('priority')} {item.get('agent_name')}: {item.get('reason')}")
 
 
 if __name__ == "__main__":

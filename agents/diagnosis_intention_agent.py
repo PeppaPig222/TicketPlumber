@@ -5,21 +5,19 @@
 """
 import json
 import re
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List
 
 from agentscope.message import Msg
-from agents.scheduling import SchedulingContext, StrategyMatrix
 from utils.tool_registry import tool_registry
 
 
 class DiagnosisIntentionAgent:
-    """基于工单上下文生成每一轮的专业 Agent 调度计划。"""
+    """工单诊断意图识别：输出 scenario + key_entities，不负责调度。"""
 
     def __init__(
         self,
         name: str = "DiagnosisIntentionAgent",
         rag_agent=None,
-        strategy_matrix: StrategyMatrix = None,
         memory_manager=None,
     ):
         self.name = name
@@ -27,8 +25,6 @@ class DiagnosisIntentionAgent:
         self.rag_agent = rag_agent
         # 统一记忆/RAG 入口；优先使用 memory_manager，未注入则回退 rag_agent
         self.memory_manager = memory_manager
-        # 调度策略矩阵，默认使用内置规则
-        self.strategy_matrix = strategy_matrix or StrategyMatrix()
 
     async def reply(self, x: Msg = None) -> Msg:
         payload = self._parse_payload(x)
@@ -44,15 +40,6 @@ class DiagnosisIntentionAgent:
 
         base_reasoning = self._build_reasoning(round_num, scenario, issue_type)
         enriched_reasoning = self._enrich_reasoning_with_memory(base_reasoning, memory_context)
-
-        schedule, schedule_metadata = self._build_schedule(
-            scenario=scenario,
-            round_num=round_num,
-            query=query,
-            ticket=ticket,
-            collected_data=collected_data,
-            key_entities=key_entities,
-        )
 
         intention = {
             "intent": self._intent_name(round_num),
@@ -74,8 +61,6 @@ class DiagnosisIntentionAgent:
             "round_num": round_num,
             "query": query,
             "collected_data": collected_data,
-            "agent_schedule": [task.to_dict() for task in schedule],
-            "schedule_metadata": schedule_metadata,
         }
         return Msg(
             name=self.name,
@@ -217,28 +202,6 @@ class DiagnosisIntentionAgent:
             return base_reasoning
         return base_reasoning + " [记忆上下文] " + " | ".join(extras)
 
-    def _build_schedule(
-        self,
-        scenario: str,
-        round_num: int,
-        query: str,
-        ticket: Dict[str, Any],
-        collected_data: Dict[str, Any],
-        key_entities: Dict[str, Any],
-    ) -> Tuple[List[Any], Dict[str, Any]]:
-        """使用策略矩阵生成当前轮次的 Agent 调度计划。"""
-        ctx = SchedulingContext(
-            scenario=scenario,
-            round_num=round_num,
-            query=query,
-            ticket=ticket,
-            collected_data=collected_data,
-            key_entities=key_entities,
-            rag_available=self.rag_agent is not None,
-        )
-        tasks, metadata = self.strategy_matrix.build(ctx)
-        return tasks, metadata
-
     def _detect_issue_type(self, query: str) -> str:
         if "结算" in query:
             return "结算金额不符"
@@ -306,11 +269,3 @@ class DiagnosisIntentionAgent:
         if result.get("status") == "success" and isinstance(result.get("data"), dict):
             return result["data"].get("order_id", "")
         return ""
-
-    def _task(self, agent_name: str, priority: int, reason: str, expected_output: str) -> Dict[str, Any]:
-        return {
-            "agent_name": agent_name,
-            "priority": priority,
-            "reason": reason,
-            "expected_output": expected_output,
-        }
