@@ -10,6 +10,7 @@ project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
 from services.diagnosis_service import DiagnosisService, TraceRepository
+from context.diagnosis_state import DiagnosisState
 
 
 @pytest.mark.asyncio
@@ -82,18 +83,16 @@ async def test_diagnosis_service_survives_intention_agent_failure():
         if ticket.get("merchant_id"):
             memory_manager.set_merchant_id(ticket.get("merchant_id"))
 
-        state = {
-            "query": query,
-            "ticket": ticket,
-            "collected_data": {
-                "facts": {
-                    "ticket_id": ticket.get("ticket_id", ""),
-                    "merchant_id": ticket.get("merchant_id", ""),
-                    "order_id": ticket.get("order_id", ""),
-                    "issue_type": ticket.get("issue_type", ""),
-                }
+        state = DiagnosisState(
+            query=query,
+            ticket=ticket,
+            facts={
+                "ticket_id": ticket.get("ticket_id", ""),
+                "merchant_id": ticket.get("merchant_id", ""),
+                "order_id": ticket.get("order_id", ""),
+                "issue_type": ticket.get("issue_type", ""),
             },
-        }
+        )
         from utils.trace_collector import TraceCollector
 
         trace = TraceCollector(ticket_id=ticket.get("ticket_id", ""))
@@ -131,8 +130,8 @@ async def test_diagnosis_service_survives_intention_agent_failure():
             }
             intention_payload = {
                 "query": query,
-                "ticket": state.get("ticket", {}),
-                "collected_data": state.get("collected_data", {}),
+                "ticket": state.ticket,
+                "collected_data": state.to_intention_collected_data(),
                 "round_num": round_num,
                 "memory_context": memory_context,
             }
@@ -208,18 +207,16 @@ async def test_diagnosis_service_survives_orchestrator_failure():
     memory_manager.add_message("user", query, metadata={"trace_id": trace_id})
 
     ticket = await service._load_ticket_context(query)
-    state = {
-        "query": query,
-        "ticket": ticket,
-        "collected_data": {
-            "facts": {
-                "ticket_id": ticket.get("ticket_id", ""),
-                "merchant_id": ticket.get("merchant_id", ""),
-                "order_id": ticket.get("order_id", ""),
-                "issue_type": ticket.get("issue_type", ""),
-            }
+    state = DiagnosisState(
+        query=query,
+        ticket=ticket,
+        facts={
+            "ticket_id": ticket.get("ticket_id", ""),
+            "merchant_id": ticket.get("merchant_id", ""),
+            "order_id": ticket.get("order_id", ""),
+            "issue_type": ticket.get("issue_type", ""),
         },
-    }
+    )
     trace = TraceCollector(ticket_id=ticket.get("ticket_id", ""))
 
     intention_agent = IntentionAgent(name="IntentionAgent")
@@ -227,8 +224,8 @@ async def test_diagnosis_service_survives_orchestrator_failure():
 
     intention_payload = {
         "query": query,
-        "ticket": state.get("ticket", {}),
-        "collected_data": state.get("collected_data", {}),
+        "ticket": state.ticket,
+        "collected_data": state.to_intention_collected_data(),
         "round_num": 1,
         "memory_context": {
             "recent_dialogue": "",

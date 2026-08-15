@@ -21,6 +21,7 @@ from agents.intention_agent import IntentionAgent
 from agents.lazy_agent_registry import LazyAgentRegistry
 from agents.loop_decider import LoopDecider
 from agents.orchestration_agent import OrchestrationAgent
+from context.diagnosis_state import DiagnosisState
 from context.long_term_memory import LongTermMemory
 from context.memory_manager import MemoryManager
 from skills.registry import SkillRegistry
@@ -148,18 +149,16 @@ class DiagnosisService:
         if ticket.get("merchant_id"):
             memory_manager.set_merchant_id(ticket.get("merchant_id"))
 
-        state = {
-            "query": query,
-            "ticket": ticket,
-            "collected_data": {
-                "facts": {
-                    "ticket_id": ticket.get("ticket_id", ""),
-                    "merchant_id": ticket.get("merchant_id", ""),
-                    "order_id": ticket.get("order_id", ""),
-                    "issue_type": ticket.get("issue_type", ""),
-                }
+        state = DiagnosisState(
+            query=query,
+            ticket=ticket,
+            facts={
+                "ticket_id": ticket.get("ticket_id", ""),
+                "merchant_id": ticket.get("merchant_id", ""),
+                "order_id": ticket.get("order_id", ""),
+                "issue_type": ticket.get("issue_type", ""),
             },
-        }
+        )
         trace = TraceCollector(ticket_id=ticket.get("ticket_id", ""))
 
         # 每次诊断都创建新的 Agent 链，避免并发状态竞争
@@ -204,8 +203,8 @@ class DiagnosisService:
             }
             intention_payload = {
                 "query": query,
-                "ticket": state.get("ticket", {}),
-                "collected_data": state.get("collected_data", {}),
+                "ticket": state.ticket,
+                "collected_data": state.to_intention_collected_data(),
                 "round_num": round_num,
                 "memory_context": memory_context,
             }
@@ -310,7 +309,7 @@ class DiagnosisService:
         )
 
         # 统一写入三层记忆
-        facts = (state.get("collected_data", {}) or {}).get("facts", {})
+        facts = state.facts
         await memory_manager.record_diagnosis({
             "trace_id": trace_id,
             "ticket_id": diagnosis.get("ticket_id", ""),
@@ -320,7 +319,7 @@ class DiagnosisService:
             "summary": diagnosis_summary,
             "responsible_party": (diagnosis.get("diagnosis") or {}).get("responsible_party", ""),
             "root_cause": (diagnosis.get("diagnosis") or {}).get("root_cause", ""),
-            "query": state.get("query", ""),
+            "query": state.query,
             "status": diagnosis.get("status", "completed"),
         })
 
@@ -369,10 +368,10 @@ class DiagnosisService:
             return ticket_result.get("data", {})
         return {}
 
-    def _fallback_intention(self, round_num: int, query: str, state: Dict[str, Any]) -> Dict[str, Any]:
+    def _fallback_intention(self, round_num: int, query: str, state: DiagnosisState) -> Dict[str, Any]:
         """IntentionAgent 失败时的规则回退意图。"""
         scenario = (
-            state.get("collected_data", {}).get("facts", {}).get("scenario")
+            state.facts.get("scenario")
             or "generic_ticket_diagnosis"
         )
         return {
@@ -386,13 +385,13 @@ class DiagnosisService:
                     "reason": "IntentionAgent 异常，使用规则兜底",
                 }
             ],
-            "key_entities": state.get("collected_data", {}).get("facts", {}),
+            "key_entities": state.facts,
             "rewritten_query": query,
             "scenario": scenario,
-            "ticket": state.get("ticket", {}),
+            "ticket": state.ticket,
             "round_num": round_num,
             "query": query,
-            "collected_data": state.get("collected_data", {}),
+            "collected_data": state.to_intention_collected_data(),
             "error_code": ErrorCode.INTENT_RECOGNITION_FAILED.value[0],
             "agent_schedule": [
                 {
@@ -476,38 +475,22 @@ class DiagnosisService:
 
     def _merge_round_result(
         self,
-        state: Dict[str, Any],
+        state: DiagnosisState,
         intention_data: Dict[str, Any],
         round_result: Dict[str, Any],
     ):
-        collected = state.setdefault("collected_data", {})
-        facts = collected.setdefault("facts", {})
-
-        key_entities = intention_data.get("key_entities", {}) or {}
-        for key, value in key_entities.items():
-            if value:
-                facts[key] = value
-
-        for result in round_result.get("results", []):
-            data = result.get("data", {}) or {}
-            for key, value in data.items():
-                if key in {"duration_ms", "tools_called", "summary", "status", "recommended_skills", "next_actions", "error"}:
-                    continue
-                facts[key] = value
-
-        collected.setdefault("rounds", []).append({
-            "intent": intention_data.get("intent"),
-            "result": round_result,
-        })
+        state.merge_intention(intention_data.get("key_entities", {}))
+        state.merge_round(round_result)
+        state.add_round(intention_data.get("intent"), round_result)
 
     def _build_response(
         self,
         trace_id: str,
-        state: Dict[str, Any],
+        state: DiagnosisState,
         trace: Dict[str, Any],
         final_decision: str,
     ) -> Dict[str, Any]:
-        facts = (state.get("collected_data", {}) or {}).get("facts", {})
+        facts = state.facts
         scenario = facts.get("scenario", "order_status_anomaly")
 
         if final_decision == "need_info":

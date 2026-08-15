@@ -55,13 +55,10 @@ class LazyAgentRegistry:
         self._discover_skills()
         
         # 旧版兼容映射 (name -> skill_folder_name)
+        # 仅保留工单诊断仍在用的别名；旅行场景旧名（preference/information_query 等）已清理
         self._legacy_mapping = {
             "rag_knowledge": "ask-question",
             "memory_query": "memory-query",
-            "preference": "preference",
-            "information_query": "query-info",
-            "itinerary_planning": "plan-trip",
-            "event_collection": "event-collection"
         }
 
     def _discover_skills(self):

@@ -11,6 +11,8 @@ from typing import Any, Dict, Iterable, List, Optional
 from agentscope.agent import AgentBase
 from agentscope.message import Msg
 
+from context.diagnosis_state import AgentResult
+
 
 class BaseDiagnosisAgent(AgentBase):
     """为专业诊断 Agent 提供统一输入解析、Skill 调用和结构化输出。"""
@@ -91,18 +93,18 @@ class BaseDiagnosisAgent(AgentBase):
         tools_called: Optional[List[str]] = None,
         **extra_data,
     ) -> Msg:
-        payload = {
-            "status": status,
-            "summary": summary,
-            "evidence": evidence or [],
-            "next_actions": next_actions or [],
-            "recommended_skills": recommended_skills or [],
-            "tools_called": tools_called or [],
-        }
-        payload.update(extra_data)
+        result = AgentResult(
+            status=status,
+            summary=summary,
+            evidence=evidence or [],
+            next_actions=next_actions or [],
+            recommended_skills=recommended_skills or [],
+            tools_called=tools_called or [],
+            **extra_data,
+        )
         return Msg(
             name=self.name,
-            content=json.dumps(payload, ensure_ascii=False),
+            content=json.dumps(result.to_dict(), ensure_ascii=False),
             role="assistant",
         )
 

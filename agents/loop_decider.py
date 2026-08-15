@@ -71,19 +71,14 @@ class LoopDecider:
             data = r.get("data", {}) or {}
             inner = data.get("data", {}) or {}
 
-            # 检查是否有 inconsistency 标记
+            # 只信任结构化 inconsistency_found / data_inconsistent 信号，
+            # 不再对 summary 做 "不一致" 字符串包含判断（会误判"未发现不一致"等表述）。
             inconsistency = (
                 data.get("inconsistency_found")
                 or inner.get("inconsistency_found")
                 or data.get("data_inconsistent")
                 or inner.get("data_inconsistent")
             )
-            # 也检查 content/answer 里是否提到了不一致
-            for key in ["answer", "content", "result"]:
-                val = data.get(key) or inner.get(key)
-                if isinstance(val, str) and "不一致" in val:
-                    inconsistency = True
-                    break
 
             if inconsistency:
                 logger.info("Round 2: data inconsistency found → cross_verify")
