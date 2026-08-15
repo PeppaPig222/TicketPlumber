@@ -21,6 +21,10 @@ class DataAgent(BaseDiagnosisAgent):
         "get_asset_allocation",
         "get_bill_detail",
         "get_settlement_rule",
+        "order_data_path",
+        "ValidateFrontendState",
+        "GetBillCalculation",
+        "settlement_contract_path",
     }
 
     async def reply(self, x: Msg = None) -> Msg:
@@ -44,9 +48,9 @@ class DataAgent(BaseDiagnosisAgent):
         if scenario == "asset_allocation_failure":
             skill_names = ["get_asset_pool", "get_asset_allocation"]
         elif scenario == "settlement_amount_mismatch":
-            skill_names = ["get_bill_detail", "get_settlement_rule"]
+            skill_names = ["get_bill_detail", "get_settlement_rule", "GetBillCalculation", "settlement_contract_path"]
         else:
-            skill_names = ["get_order_detail"]
+            skill_names = ["get_order_detail", "order_data_path", "ValidateFrontendState"]
 
         skill_results = [
             await self._run_skill(skill_name, context, "预加载数据侧核心实体", "后续一致性校验所需事实", previous_results)

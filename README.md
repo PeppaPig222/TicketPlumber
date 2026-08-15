@@ -30,7 +30,7 @@
 
 ## 项目定位
 
-DiagBot 服务的是工单第一响应人。
+TicketPlumber 服务的是工单第一响应人。
 
 在真实业务里，商户投诉工单进来后，接单的人不一定是固定角色，可能是前端，也可能是后端或 on-call。同一个人往往要做三件事：
 
@@ -38,7 +38,7 @@ DiagBot 服务的是工单第一响应人。
 2. 查接口与日志链路
 3. 判断责任归属
 
-DiagBot 不直接替代人工修复，而是先把排查过程中的信息收集、证据整理和初步归因自动化，让第一响应人少开几个系统、少反复切换上下文。
+TicketPlumber 不直接替代人工修复，而是先把排查过程中的信息收集、证据整理和初步归因自动化，让第一响应人少开几个系统、少反复切换上下文。
 
 ## 与 Aligo 原工程的关系
 
@@ -64,32 +64,29 @@ DiagBot 不直接替代人工修复，而是先把排查过程中的信息收集
 ## 架构总览
 
 ```text
-User / CLI / Web / API
-        |
-        v
-DiagnosisIntentionAgent
-        |
-        v
-Scheduler
-        |
-        v
-LazyAgentRegistry
-        |
-        +-------------------+-------------------+-------------------+
-        |                   |                   |                   |
-        v                   v                   v                   v
-   CodeAgent         OperationAgent         DataAgent       ResolutionAgent
-        |                   |                   |                   |
-        +-------------------+-------------------+-------------------+
-                            |
-                            v
-                       SkillRegistry
-                            |
-                            v
-                        ToolRegistry
-                            |
-                            v
-               Mock Data / Logs / KB / Snapshots
+                 User
+                   ↓
+             Intention Agent
+              LLM Understanding
+                   ↓
+            Strategy Matrix
+             Deterministic
+                   ↓
+              Scheduler
+             Deterministic
+                   ↓
+        ┌──────────┼──────────┐
+        ↓          ↓          ↓
+     CodeAgent OperationAgent DataAgent
+        ↓          ↓          ↓
+       Skill      Skill      Skill
+        ↓          ↓          ↓
+       Tool       Tool       Tool
+        └──────────┼──────────┘
+                   ↓
+             Verification
+                   ↓
+              Final Answer
 ```
 
 当前代码里仍然保留了 `DiagnosisService` 作为 facade，用来串联 API、trace、history 和多轮执行；后续目标是继续把主链路收回到更接近 Aligo 风格的 Agent 调度模式。
@@ -352,9 +349,9 @@ pytest tests/test_intention_agent.py tests/test_cli_qa.py
 ├── context/         # 长短期记忆
 ├── data/mock/       # 演示用 mock 数据
 ├── docs/            # 技术方案、设计原则、TODO
+├── frontend/        # React + TypeScript 诊断面板
 ├── services/        # 诊断 facade
 ├── skills/          # Skill 注册与后续插件化扩展
 ├── tests/           # 诊断链路测试
-├── utils/           # tool registry / trace / logging 等基础设施
-└── web/             # 最小可用前端 demo
+└── utils/           # tool registry / trace / logging 等基础设施
 ```

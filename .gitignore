@@ -38,6 +38,7 @@ wheels/
 data/rag_knowledge/
 data/models/
 data/memory/
+data/test_memory/
 data/preferences/*.json
 !data/preferences/.gitkeep
 .claude/skills/ask-question/data/rag_knowledge/

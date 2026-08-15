@@ -23,6 +23,11 @@ class CodeAgent(BaseDiagnosisAgent):
         "get_merchant_contract",
         "get_bill_detail",
         "get_settlement_rule",
+        "GetOrderRefund",
+        "ReconstructTimeline",
+        "GetBillingConfig",
+        "GetBillCalculation",
+        "GetReconciliation",
     }
 
     async def reply(self, x: Msg = None) -> Msg:
@@ -44,11 +49,11 @@ class CodeAgent(BaseDiagnosisAgent):
 
     async def _round_one(self, context: Dict, scenario: str, previous_results: List[Dict]) -> Msg:
         if scenario == "asset_allocation_failure":
-            skill_names = ["get_asset_pool", "get_asset_allocation"]
+            skill_names = ["get_asset_pool", "get_asset_allocation", "GetBillingConfig"]
         elif scenario == "settlement_amount_mismatch":
-            skill_names = ["get_merchant_contract", "get_bill_detail", "get_settlement_rule"]
+            skill_names = ["get_merchant_contract", "get_bill_detail", "get_settlement_rule", "GetBillCalculation", "GetReconciliation"]
         else:
-            skill_names = ["get_order_detail", "get_order_timeline"]
+            skill_names = ["get_order_detail", "get_order_timeline", "GetOrderRefund", "ReconstructTimeline"]
 
         skill_results = [
             await self._run_skill(skill_name, context, "补全代码侧基础上下文", "结构化基础事实", previous_results)

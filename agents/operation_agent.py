@@ -22,6 +22,9 @@ class OperationAgent(BaseDiagnosisAgent):
         "get_asset_allocation",
         "get_order_timeline",
         "search_policy_faq",
+        "GetMerchantCoopStatus",
+        "GetProtectionPeriod",
+        "GetAssetRecycle",
     }
 
     async def reply(self, x: Msg = None) -> Msg:
@@ -43,11 +46,11 @@ class OperationAgent(BaseDiagnosisAgent):
 
     async def _round_one(self, context: Dict, scenario: str, previous_results: List[Dict]) -> Msg:
         if scenario == "asset_allocation_failure":
-            skill_names = ["get_user_binding", "search_history_ticket"]
+            skill_names = ["get_user_binding", "search_history_ticket", "GetProtectionPeriod", "GetAssetRecycle"]
         elif scenario == "settlement_amount_mismatch":
             skill_names = ["search_history_ticket"]
         else:
-            skill_names = ["get_merchant_profile", "search_history_ticket"]
+            skill_names = ["get_merchant_profile", "search_history_ticket", "GetMerchantCoopStatus"]
 
         skill_results = [
             await self._run_skill(skill_name, context, "补全操作侧基础上下文", "历史经验与用户侧线索", previous_results)
