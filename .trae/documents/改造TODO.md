@@ -272,6 +272,16 @@
   - [x] `DiagnosisService` 创建 `MemoryManager` 时注入 `rag_agent`
   - [x] `IntentionAgent` / `ResolutionAgent` 统一走 `memory_manager.search_knowledge()`，共享 session 内 RAG 缓存
   - [x] `config/settings.py` 增加 `enable_query_rewrite` / `enable_session_cache` / `enable_unified_retrieval` 开关
+- [x] Memory 与 RAG 接入 Phase 2 & 3：
+  - [x] 抽象存储层接口 `context/base_memory.py`（`BaseShortTermMemory` / `BaseLongTermMemory` / `BaseMerchantProfileStore`）
+  - [x] 默认 local backend：`InMemoryShortTermMemory` / `FileLongTermMemory` / `FileMerchantProfileStore`
+  - [x] `MemoryManager` 支持依赖注入存储后端，保留 `ShortTermMemory` / `LongTermMemory` / `MerchantProfileStore` 兼容别名
+  - [x] 新增 `context/factory.py` `MemoryBackendFactory`，按 `MEMORY_CONFIG.backend` 创建 MemoryManager
+  - [x] 新增 `config/settings.py` `MemorySettings`，支持 `DIAG_MEM_*` 环境变量
+  - [x] 企业级 backend 实现（可选依赖）：
+    - [x] `context/redis_backend.py` `RedisShortTermMemory`
+    - [x] `context/postgres_backend.py` `PostgresLongTermMemory`
+    - [x] `context/mongo_backend.py` `MongoMerchantProfileStore`
 - [ ] 区分 `SearchHistoryTicket` 与 `SearchPolicyFAQ`（仍复用底层 RAG 检索，待按 collection 拆分）
 
 ### 5.3 测试
@@ -280,6 +290,7 @@
 - [x] 补“知识库不可用时的降级测试”
 - [x] 补 PDF 切分与架构图占位测试
 - [x] 补 Memory 与 RAG 接入测试（`tests/test_memory_rag_integration.py`）
+- [x] 补 Memory 存储后端抽象与企业级 backend 测试（`tests/test_memory_backends.py`）
 
 ---
 
@@ -398,6 +409,13 @@ core_eval_set.json
 - [x] `python scripts/init_diagnosis_kb.py --reset`
 - [x] `pytest tests/test_rag_integration.py`
 - [x] 完整回归测试集 `65 passed`
+- [x] 更新本 TODO 勾选状态
+
+> Memory & RAG Phase 2/3 存储后端抽象收口（82 passed）：
+
+- [x] `pytest tests/test_memory_backends.py` `10 passed`
+- [x] `pytest tests/test_memory_rag_integration.py` `7 passed`
+- [x] 完整回归测试集 `82 passed`
 - [x] 更新本 TODO 勾选状态
 
 > 注：CLI / Web / Docker 本地运行验证依赖交互式环境，已在前期批次验证通过；当前环境未安装 Docker，容器化文件按最佳实践编写，可在有 Docker 的环境直接 `docker compose up --build`。

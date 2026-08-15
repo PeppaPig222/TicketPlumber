@@ -11,9 +11,10 @@ pydantic-settings 配置管理
 - DIAG_SYS_*     → 系统配置
 - DIAG_RAG_*     → RAG 配置
 - DIAG_RES_*     → 韧性/重试/熔断配置
+- DIAG_MEM_*     → 记忆系统配置
 """
 
-from typing import List
+from typing import List, Optional
 
 from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -118,15 +119,46 @@ class RAGSettings(BaseSettings):
     )
 
 
-class ResilienceSettings(BaseSettings):
-    """连接与可用性：重试、熔断、健康检查"""
+class MemorySettings(BaseSettings):
+    """记忆系统存储配置"""
 
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
-        env_prefix="DIAG_RES_",
+        env_prefix="DIAG_MEM_",
         extra="ignore",
     )
+
+    backend: str = Field(
+        default="local",
+        description="记忆存储后端: local / redis / hybrid",
+    )
+    storage_path: str = Field(
+        default="data/memory",
+        description="local backend 存储路径",
+    )
+
+    # 短期记忆
+    short_term_max_turns: int = Field(
+        default=100,
+        ge=1,
+        description="短期记忆最大保存轮数",
+    )
+    short_term_ttl_seconds: int = Field(
+        default=3600,
+        ge=0,
+        description="短期记忆 TTL（秒）",
+    )
+
+    # Redis 配置（backend=redis 时使用）
+    redis_host: str = Field(default="localhost")
+    redis_port: int = Field(default=6379, ge=1, le=65535)
+    redis_db: int = Field(default=0, ge=0)
+    redis_password: Optional[str] = Field(default=None)
+
+
+class ResilienceSettings(BaseSettings):
+    """连接与可用性：重试、熔断、健康检查"""
 
     max_retries: int = Field(default=3, ge=0)
     retry_base_delay_sec: float = Field(default=1.0, gt=0)
@@ -206,6 +238,7 @@ class Settings(BaseSettings):
     llm: LLMSettings = LLMSettings()
     system: SystemSettings = SystemSettings()
     rag: RAGSettings = RAGSettings()
+    memory: MemorySettings = MemorySettings()
     resilience: ResilienceSettings = ResilienceSettings()
     scheduling: SchedulingSettings = SchedulingSettings()
 

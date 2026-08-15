@@ -1,7 +1,7 @@
 """
 商户级画像 (Merchant Profile Store)
 中期记忆：聚合单个商户的诊断历史、责任归属倾向和常见问题标签
-存储：本地 JSON 文件（过渡方案），后续可迁移至 MySQL/Postgres
+存储：本地 JSON 文件（过渡方案），后续可迁移至 MySQL/Postgres/MongoDB
 """
 from typing import Dict, Any, List, Optional
 from datetime import datetime
@@ -10,12 +10,14 @@ import json
 import os
 import logging
 
+from context.base_memory import BaseMerchantProfileStore
+
 logger = logging.getLogger(__name__)
 
 
-class MerchantProfileStore:
+class FileMerchantProfileStore(BaseMerchantProfileStore):
     """
-    商户级画像：维护单个商户的诊断统计与标签
+    商户级画像：基于 JSON 文件维护单个商户的诊断统计与标签
     - 历史工单统计
     - 责任归属倾向（各归属方出现频次）
     - 常见问题类型标签
@@ -213,3 +215,7 @@ class MerchantProfileStore:
                 )
 
         return "\n".join(lines)
+
+
+# 兼容旧导入：MerchantProfileStore 作为 FileMerchantProfileStore 的别名
+MerchantProfileStore = FileMerchantProfileStore

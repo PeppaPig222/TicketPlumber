@@ -32,12 +32,16 @@ RESILIENCE_CONFIG = settings.resilience.model_dump()
 # 调度策略矩阵配置
 SCHEDULING_CONFIG = settings.scheduling.model_dump()
 
+# 记忆系统配置
+MEMORY_CONFIG = settings.memory.model_dump()
+
 # 导出 Settings 单例，方便新代码直接访问
 __all__ = [
     "APP_CONFIG",
     "LLM_CONFIG",
     "SYSTEM_CONFIG",
     "RAG_CONFIG",
+    "MEMORY_CONFIG",
     "RESILIENCE_CONFIG",
     "SCHEDULING_CONFIG",
     "settings",

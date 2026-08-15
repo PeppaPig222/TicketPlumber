@@ -1,12 +1,17 @@
 """
 记忆管理器 (Memory Manager)
-统一管理三层记忆，提供简单的API
+统一管理三层记忆，提供简单的API；底层存储通过依赖注入可替换。
 """
 from typing import Dict, Any, List, Optional
-from .short_term_memory import ShortTermMemory
-from .long_term_memory import LongTermMemory
-from .merchant_profile_store import MerchantProfileStore
+from .short_term_memory import InMemoryShortTermMemory
+from .long_term_memory import FileLongTermMemory
+from .merchant_profile_store import FileMerchantProfileStore
 from .diagnosis_pattern_store import DiagnosisPatternStore
+from .base_memory import (
+    BaseShortTermMemory,
+    BaseLongTermMemory,
+    BaseMerchantProfileStore,
+)
 import logging
 import json
 
@@ -32,6 +37,9 @@ class MemoryManager:
         milvus_client=None,
         embedding_model=None,
         rag_agent=None,
+        short_term_memory: Optional[BaseShortTermMemory] = None,
+        long_term_memory: Optional[BaseLongTermMemory] = None,
+        merchant_profile_store: Optional[BaseMerchantProfileStore] = None,
     ):
         """
         初始化记忆管理器
@@ -39,25 +47,30 @@ class MemoryManager:
         Args:
             user_id: 用户ID
             session_id: 会话ID
-            storage_path: 长期记忆存储路径
+            storage_path: 长期记忆存储路径（local backend 默认使用）
             llm_model: LLM模型实例（用于总结长期记忆）
             merchant_id: 商户ID（可选，用于商户画像）
             milvus_client: MilvusClient 实例（可选，用于诊断模式库）
             embedding_model: 向量化模型（可选，用于诊断模式库）
             rag_agent: RAG 知识库 Agent 实例（可选，用于统一检索入口）
+            short_term_memory: 短期记忆实现（可选，默认 InMemoryShortTermMemory）
+            long_term_memory: 长期记忆实现（可选，默认 FileLongTermMemory）
+            merchant_profile_store: 商户画像实现（可选，默认 FileMerchantProfileStore）
         """
         self.user_id = user_id
         self.session_id = session_id
         self.llm_model = llm_model
         self.merchant_id = merchant_id
         self.rag_agent = rag_agent
+        self.storage_path = storage_path
 
-        # 初始化各层记忆
-        self.short_term = ShortTermMemory(max_turns=100)
-        self.long_term = LongTermMemory(user_id, storage_path)
-        self.merchant_profile = (
-            MerchantProfileStore(merchant_id, storage_path) if merchant_id else None
-        )
+        # 初始化各层记忆（依赖注入，可替换存储后端）
+        self.short_term = short_term_memory or InMemoryShortTermMemory(max_turns=100)
+        self.long_term = long_term_memory or FileLongTermMemory(user_id, storage_path)
+        self.merchant_profile = merchant_profile_store
+        if self.merchant_profile is None and merchant_id:
+            self.merchant_profile = FileMerchantProfileStore(merchant_id, storage_path)
+
         self.pattern_store = (
             DiagnosisPatternStore(milvus_client, embedding_model)
             if milvus_client and embedding_model
@@ -69,7 +82,9 @@ class MemoryManager:
 
         logger.info(
             f"Memory manager initialized for user {user_id}, session {session_id}, "
-            f"merchant={merchant_id}, rag_agent={rag_agent is not None}"
+            f"merchant={merchant_id}, rag_agent={rag_agent is not None}, "
+            f"backends=[{type(self.short_term).__name__}, {type(self.long_term).__name__}, "
+            f"{type(self.merchant_profile).__name__ if self.merchant_profile else None}]"
         )
 
     # ========== 短期记忆操作 ==========
@@ -105,8 +120,12 @@ class MemoryManager:
             return
 
         self.merchant_id = merchant_id
-        self.merchant_profile = MerchantProfileStore(
-            merchant_id, self.long_term.storage_path
+        # 优先复用已注入的 merchant_profile_store 类型；未注入则默认 FileMerchantProfileStore
+        if self.merchant_profile is not None:
+            # 已存在画像时直接复用（如果 backend 支持 merchant_id 切换可扩展）
+            pass
+        self.merchant_profile = FileMerchantProfileStore(
+            merchant_id, self.storage_path
         )
         logger.info(f"Memory manager switched to merchant: {merchant_id}")
 

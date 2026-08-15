@@ -6,12 +6,14 @@ from typing import List, Dict, Any
 from datetime import datetime
 import logging
 
+from context.base_memory import BaseShortTermMemory
+
 logger = logging.getLogger(__name__)
 
 
-class ShortTermMemory:
+class InMemoryShortTermMemory(BaseShortTermMemory):
     """
-    短期记忆：存储最近的对话历史
+    短期记忆：基于内存存储最近的对话历史
     - 存储最近 5-10 轮对话
     - 自动淘汰旧消息
     - 用于上下文理解
@@ -104,3 +106,7 @@ class ShortTermMemory:
             "oldest_message_time": self.messages[0]["timestamp"] if self.messages else None,
             "newest_message_time": self.messages[-1]["timestamp"] if self.messages else None
         }
+
+
+# 兼容旧导入：ShortTermMemory 作为 InMemoryShortTermMemory 的别名
+ShortTermMemory = InMemoryShortTermMemory

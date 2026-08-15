@@ -1,4 +1,4 @@
-# DiagBot 工单智能诊断助手
+# TicketPlumber 工单智能诊断助手
 
 基于自研 Multi-Agent 编排底座的 B 端商户工单智能诊断系统。
 

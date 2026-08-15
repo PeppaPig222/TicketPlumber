@@ -9,12 +9,14 @@ from datetime import datetime
 from pathlib import Path
 import logging
 
+from context.base_memory import BaseLongTermMemory
+
 logger = logging.getLogger(__name__)
 
 
-class LongTermMemory:
+class FileLongTermMemory(BaseLongTermMemory):
     """
-    长期记忆：持久化用户信息
+    长期记忆：基于 JSON 文件持久化用户信息
     - 诊断相关偏好与配置
     - 历史工单诊断记录
     - 统计信息
@@ -350,3 +352,7 @@ class LongTermMemory:
         if os.path.exists(self.db_path):
             os.remove(self.db_path)
             logger.warning(f"Deleted long-term memory file: {self.db_path}")
+
+
+# 兼容旧导入：LongTermMemory 作为 FileLongTermMemory 的别名
+LongTermMemory = FileLongTermMemory
