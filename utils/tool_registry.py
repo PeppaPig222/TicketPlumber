@@ -43,10 +43,14 @@ class ToolRegistry:
         # ── 入口解析 ──
         self.register("query_ticket", "查询工单详情（商户ID、订单号、问题描述、附件）",
                       {"ticket_id": "string"}, self._handle_query_ticket)
+        self.register("resolve_merchant", "从工单文本中解析商户名并反查商户ID",
+                      {"text": "string"}, self._handle_resolve_merchant)
 
         # ── 订单相关 ──
         self.register("query_order", "查询订单状态、支付记录、退款流水（对应 GetOrderDetail/GetOrderTimeline/GetOrderRefund）",
                       {"order_id": "string"}, self._handle_query_order)
+        self.register("resolve_order", "按商户ID反查该商户的订单ID",
+                      {"merchant_id": "string"}, self._handle_resolve_order)
 
         # ── 日志追踪 ──
         self.register("trace_api", "查询指定接口在指定时间段的调用日志（对应 TraceRequestLog）",
@@ -85,12 +89,29 @@ class ToolRegistry:
                 return {"status": "success", "data": t}
         return {"status": "not_found", "message": f"工单 {ticket_id} 不存在", "data": tickets}
 
+    async def _handle_resolve_merchant(self, text: str = None, **kwargs) -> Dict[str, Any]:
+        """按商户名称反查 merchant_id（Entity Resolution 的 mock 实现）。"""
+        merchants = _load_json("merchants.json") or []
+        for m in merchants:
+            name = m.get("name", "")
+            if name and name in (text or ""):
+                return {"status": "success", "data": m}
+        return {"status": "not_found", "message": "未能从文本解析出商户", "data": []}
+
     async def _handle_query_order(self, order_id: str = None, **kwargs) -> Dict[str, Any]:
         orders = _load_json("orders.json") or []
         for o in orders:
             if o.get("order_id") == order_id:
                 return {"status": "success", "data": o}
         return {"status": "not_found", "message": f"订单 {order_id} 不存在", "data": orders}
+
+    async def _handle_resolve_order(self, merchant_id: str = None, **kwargs) -> Dict[str, Any]:
+        """按商户ID反查订单（merchant→order 的 mock 实现）。"""
+        orders = _load_json("orders.json") or []
+        for o in orders:
+            if o.get("merchant_id") == merchant_id:
+                return {"status": "success", "data": o}
+        return {"status": "not_found", "message": f"商户 {merchant_id} 无订单数据", "data": []}
 
     async def _handle_trace_api(self, api_path: str = None, order_id: str = None, **kwargs) -> Dict[str, Any]:
         logs = _load_json("api_logs.json") or []

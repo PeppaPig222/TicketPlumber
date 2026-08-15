@@ -128,8 +128,12 @@ class DiagnosisIntentionAgent:
                     kb_text = " ".join([r.get("content", "") for r in kb_results[:3]])
                     scenario = self._scenario_from_issue(issue_type, f"{query} {kb_text}")
 
-        merchant_id = ticket.get("merchant_id") or facts.get("merchant_id") or self._extract(query, r"\b\d{4,6}\b")
+        merchant_id = ticket.get("merchant_id") or facts.get("merchant_id") or self._extract_merchant_id(query)
+        if not merchant_id:
+            merchant_id = await self._resolve_merchant_from_text(query)
         order_id = ticket.get("order_id") or facts.get("order_id") or self._extract(query, r"ORD-\d+")
+        if not order_id and merchant_id:
+            order_id = await self._resolve_order_from_merchant(merchant_id)
         ticket_id = ticket.get("ticket_id") or facts.get("ticket_id") or self._extract(query, r"WO-\d{8}-\d{4}")
 
         entities = {
@@ -272,6 +276,36 @@ class DiagnosisIntentionAgent:
     def _extract(self, text: str, pattern: str) -> str:
         matched = re.search(pattern, text or "")
         return matched.group(0) if matched else ""
+
+    def _extract_merchant_id(self, text: str) -> str:
+        """从 query 提取商户号，兼容「商户2037」这类中文紧邻数字的场景。
+
+        原正则 \\b\\d{4,6}\\b 在 Python Unicode 模式下会因中文字符被视为单词字符，
+        导致「商户2037」中的数字无法命中 \\b 边界，商户号被漏提。这里显式匹配
+        「商户XXXX」前缀，避免把金额等独立数字误判为商户号。
+        """
+        matched = re.search(r"商户\s*(\d{4,6})", text or "")
+        return matched.group(1) if matched else ""
+
+    async def _resolve_merchant_from_text(self, query: str) -> str:
+        """当 query 只含商户名、无数字商户号时，按名称反查 merchant_id。"""
+        try:
+            result = await tool_registry.execute("resolve_merchant", text=query)
+        except Exception:
+            return ""
+        if result.get("status") == "success" and isinstance(result.get("data"), dict):
+            return result["data"].get("merchant_id", "")
+        return ""
+
+    async def _resolve_order_from_merchant(self, merchant_id: str) -> str:
+        """订单场景下，仅有商户号时按商户反查订单号。"""
+        try:
+            result = await tool_registry.execute("resolve_order", merchant_id=merchant_id)
+        except Exception:
+            return ""
+        if result.get("status") == "success" and isinstance(result.get("data"), dict):
+            return result["data"].get("order_id", "")
+        return ""
 
     def _task(self, agent_name: str, priority: int, reason: str, expected_output: str) -> Dict[str, Any]:
         return {

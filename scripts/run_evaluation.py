@@ -10,6 +10,7 @@
 import argparse
 import asyncio
 import json
+import re
 import sys
 import tempfile
 from collections import defaultdict
@@ -32,12 +33,101 @@ def load_dataset(path: Path) -> List[Dict[str, Any]]:
         return json.load(f)
 
 
-def check_root_cause(actual: str, expected_keywords: List[str]) -> bool:
-    """只要命中任意一个关键词即认为根因正确。"""
+def check_root_cause(diagnosis: Dict[str, Any], expected_keywords: List[str]) -> bool:
+    """根因评测：结构化多字段 + 语义软匹配。
+
+    Structured：把 root_cause / summary / evidence 合并为「根因语义文本」，
+    避免只匹配单一 root_cause 字段导致的假阴性（如「规则不一致」实际写在 summary 里）。
+    Semantic：连续子串命中优先；否则按 2 字切分关键词，允许跨词命中
+    （例如「回调超时」能命中「回调…超时」）。
+    """
     if not expected_keywords:
         return True
-    actual = actual or ""
-    return any(kw in actual for kw in expected_keywords)
+
+    parts = [
+        diagnosis.get("root_cause", ""),
+        diagnosis.get("summary", ""),
+    ]
+    evidence = diagnosis.get("evidence", [])
+    if isinstance(evidence, list):
+        parts.extend(str(e) for e in evidence)
+    haystack = " ".join(p for p in parts if p)
+
+    for kw in expected_keywords:
+        kw = (kw or "").strip()
+        if not kw:
+            continue
+        if kw in haystack:
+            return True
+        tokens = [kw[i:i + 2] for i in range(0, len(kw), 2)]
+        if len(tokens) > 1 and all(t in haystack for t in tokens):
+            return True
+    return False
+
+
+def extract_expected_entities(query: str) -> Dict[str, str]:
+    """从 query 提取明确出现的实体标识，作为 Entity 环节的期望值。"""
+    ticket_id = re.search(r"WO-\d{8}-\d{4}", query or "")
+    order_id = re.search(r"ORD-\d+", query or "")
+    return {
+        "ticket_id": ticket_id.group(0) if ticket_id else "",
+        "order_id": order_id.group(0) if order_id else "",
+    }
+
+
+def evaluate_stages(result: Dict[str, Any], case: Dict[str, Any]) -> Dict[str, Any]:
+    """逐环节判定诊断在各阶段的正确性。
+
+    返回每环节 bool 或 None（None 表示该环节本次未触发/无法判定，不计入统计分母）。
+    """
+    diagnosis = result.get("diagnosis", {}) or {}
+    key_entities = result.get("key_entities", {}) or {}
+    trace = result.get("trace", {}) or {}
+    rounds = trace.get("rounds", []) or []
+    agents = [a for r in rounds for a in (r.get("agents", []) or [])]
+
+    # Intent：场景识别
+    intent_ok = result.get("scenario", "") == case["expected_scenario"]
+
+    # Entity：关键实体提取（仅对 query 里明确出现的实体做校验）
+    expected = extract_expected_entities(case["query"])
+    entity_checks = []
+    if expected["ticket_id"]:
+        entity_checks.append(str(key_entities.get("ticket_id", "")) == expected["ticket_id"])
+    if expected["order_id"]:
+        entity_checks.append(str(key_entities.get("order_id", "")) == expected["order_id"])
+    entity_ok = None if not entity_checks else all(entity_checks)
+
+    # RAG：知识检索执行成功（仅在 RAGKnowledgeAgent 被调度时统计）
+    rag_agents = [a for a in agents if a.get("agent_name") == "RAGKnowledgeAgent"]
+    rag_ok = None if not rag_agents else all(a.get("status") == "success" for a in rag_agents)
+
+    # Tool：专业 Agent 执行成功（agent 层 status，代表其内部工具调用未失败）
+    professional = {"CodeAgent", "OperationAgent", "DataAgent"}
+    tool_checks = [a for a in agents if a.get("agent_name") in professional]
+    tool_ok = None if not tool_checks else all(a.get("status") == "success" for a in tool_checks)
+
+    # Agent：诊断结论（责任方 + 根因）
+    responsible_ok = diagnosis.get("responsible_party", "") == case["expected_responsible_party"]
+    root_cause_ok = check_root_cause(
+        diagnosis,
+        case.get("expected_root_cause_keywords", []),
+    )
+    agent_ok = responsible_ok and root_cause_ok
+
+    # Verification：cross_verify 触发后最终结论是否正确
+    decisions = [r.get("decision", "") for r in rounds]
+    has_cross_verify = any(d == "cross_verify" for d in decisions)
+    verification_ok = None if not has_cross_verify else agent_ok
+
+    return {
+        "intent_ok": intent_ok,
+        "entity_ok": entity_ok,
+        "rag_ok": rag_ok,
+        "tool_ok": tool_ok,
+        "agent_ok": agent_ok,
+        "verification_ok": verification_ok,
+    }
 
 
 def evaluate_case(result: Dict[str, Any], case: Dict[str, Any]) -> Dict[str, Any]:
@@ -49,7 +139,7 @@ def evaluate_case(result: Dict[str, Any], case: Dict[str, Any]) -> Dict[str, Any
 
     scenario_ok = actual_scenario == case["expected_scenario"]
     responsible_ok = actual_responsible == case["expected_responsible_party"]
-    root_cause_ok = check_root_cause(actual_root_cause, case.get("expected_root_cause_keywords", []))
+    root_cause_ok = check_root_cause(diagnosis, case.get("expected_root_cause_keywords", []))
     rounds_ok = actual_rounds == case.get("expected_rounds", actual_rounds)
     all_ok = scenario_ok and responsible_ok and root_cause_ok
 
@@ -70,6 +160,7 @@ def evaluate_case(result: Dict[str, Any], case: Dict[str, Any]) -> Dict[str, Any
         "expected_responsible": case["expected_responsible_party"],
         "expected_root_cause_keywords": case.get("expected_root_cause_keywords", []),
         "expected_rounds": case.get("expected_rounds"),
+        **evaluate_stages(result, case),
     }
 
 
@@ -97,6 +188,33 @@ async def run_evaluation(dataset_path: Path) -> Dict[str, Any]:
         "metrics": metrics,
         "results": results,
     }
+
+
+STAGE_LABELS = {
+    "intent": "Intent（场景识别）",
+    "entity": "Entity（实体提取）",
+    "rag": "RAG（知识检索）",
+    "tool": "Tool（工具调用）",
+    "agent": "Agent（诊断结论）",
+    "verification": "Verification（交叉验证）",
+}
+
+
+def compute_stage_metrics(results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """汇总各环节命中率。None 值（未触发/无法判定）不计入分母。"""
+    stages = {}
+    for stage, label in STAGE_LABELS.items():
+        key = f"{stage}_ok"
+        valid = [r.get(key) for r in results if r.get(key) is not None]
+        total = len(valid)
+        passed = sum(1 for v in valid if v)
+        stages[stage] = {
+            "label": label,
+            "total": total,
+            "passed": passed,
+            "rate": (passed / total) if total else None,
+        }
+    return stages
 
 
 def compute_metrics(results: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -128,6 +246,7 @@ def compute_metrics(results: List[Dict[str, Any]]) -> Dict[str, Any]:
         "overall": overall,
         "by_category": category_pass,
         "failure_count": total - sum(r["all_ok"] for r in results),
+        "stages": compute_stage_metrics(results),
     }
 
 
@@ -148,6 +267,16 @@ def print_report(report: Dict[str, Any]):
     print(f"  根因命中率 (Root Cause Hit Rate):   {overall['root_cause_hit_rate']:.2%}")
     print(f"  轮次准确率 (Rounds Accuracy):       {overall['rounds_accuracy']:.2%}")
     print(f"  端到端通过率 (Pass@1):              {overall['pass_at_1']:.2%}")
+    print("-" * 60)
+    print("分环节命中率（定位瓶颈）")
+    stages = metrics.get("stages", {})
+    for stage in STAGE_LABELS:
+        s = stages.get(stage, {})
+        rate = s.get("rate")
+        if rate is None:
+            print(f"  {s.get('label', stage):<28}: N/A（未触发，样本 {s.get('total', 0)}）")
+        else:
+            print(f"  {s.get('label', stage):<28}: {rate:.2%} ({s.get('passed', 0)}/{s.get('total', 0)})")
     print("-" * 60)
     print("分类 Pass@1")
     for cat, rate in metrics["by_category"].items():
@@ -205,11 +334,26 @@ def save_markdown_report(report: Dict[str, Any]):
         f"| 轮次准确率 (Rounds Accuracy) | {overall['rounds_accuracy']:.2%} |",
         f"| 端到端通过率 (Pass@1) | {overall['pass_at_1']:.2%} |",
         "",
+        "## 分环节命中率",
+        "",
+        "| 环节 | 命中率 | 样本 |",
+        "|---|---|---|",
+    ]
+    for stage in STAGE_LABELS:
+        s = metrics.get("stages", {}).get(stage, {})
+        rate = s.get("rate")
+        if rate is None:
+            lines.append(f"| {s.get('label', stage)} | N/A（未触发） | {s.get('total', 0)} |")
+        else:
+            lines.append(f"| {s.get('label', stage)} | {rate:.2%} | {s.get('passed', 0)}/{s.get('total', 0)} |")
+
+    lines.extend([
+        "",
         "## 分类 Pass@1",
         "",
         "| 分类 | 通过率 |",
         "|---|---|",
-    ]
+    ])
     for cat, rate in metrics["by_category"].items():
         lines.append(f"| {cat} | {rate:.2%} |")
 

@@ -492,6 +492,13 @@ class DiagnosisService:
     ) -> Dict[str, Any]:
         facts = state.facts
         scenario = facts.get("scenario", "order_status_anomaly")
+        # 暴露关键实体，供离线评测做 Entity 环节命中率统计
+        key_entities = {
+            "ticket_id": facts.get("ticket_id", ""),
+            "order_id": facts.get("order_id", ""),
+            "merchant_id": facts.get("merchant_id", ""),
+            "issue_type": facts.get("issue_type", ""),
+        }
 
         if final_decision == "need_info":
             return {
@@ -499,6 +506,7 @@ class DiagnosisService:
                 "status": "need_info",
                 "ticket_id": facts.get("ticket_id"),
                 "scenario": scenario,
+                "key_entities": key_entities,
                 "diagnosis": {
                     "summary": "当前工单信息不足，建议补充商户号、订单号或完整工单内容后重试。",
                     "responsible_party": "待补充信息",
@@ -515,6 +523,7 @@ class DiagnosisService:
             "status": "completed",
             "ticket_id": facts.get("ticket_id"),
             "scenario": scenario,
+            "key_entities": key_entities,
             "diagnosis": diagnosis,
             "trace": trace,
         }
