@@ -292,6 +292,16 @@
 - [x] 补 Memory 与 RAG 接入测试（`tests/test_memory_rag_integration.py`）
 - [x] 补 Memory 存储后端抽象与企业级 backend 测试（`tests/test_memory_backends.py`）
 
+### 5.4 RAG 检索增强（rag_retrieval_enhancement_plan Phase 1，已收口）
+
+- [x] L1 参数校验 + L3 空值缓存 + L5 embedding LRU 缓存（`RAGKnowledgeAgent`）
+- [x] Top-K 召回放大到 15 + 向量阈值去重 + 父文档召回
+- [x] PDF 入库去重（MD5 + 边界重叠）
+- [x] Session RAG 缓存 + Query Rewrite（`MemoryManager`）
+- [x] DiagnosisService 统一 RAG 入口，Intention/Resolution 共享结果
+- [x] `config/settings.py` 增加检索增强配置开关
+- [x] 补单元测试 `tests/test_rag_retrieval_enhancement.py`（14 passed）
+
 ---
 
 ## Batch 6：补齐工程化
@@ -417,5 +427,10 @@ core_eval_set.json
 - [x] `pytest tests/test_memory_rag_integration.py` `7 passed`
 - [x] 完整回归测试集 `82 passed`
 - [x] 更新本 TODO 勾选状态
+
+> RAG 检索增强 Phase 1 收口（rag_retrieval_enhancement_plan.md）：
+
+- [x] `pytest tests/test_rag_retrieval_enhancement.py` `14 passed`
+- [x] 更新本 TODO 勾选状态（见 Batch 5.4）
 
 > 注：CLI / Web / Docker 本地运行验证依赖交互式环境，已在前期批次验证通过；当前环境未安装 Docker，容器化文件按最佳实践编写，可在有 Docker 的环境直接 `docker compose up --build`。
