@@ -11,7 +11,7 @@ import pytest
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
-from scripts.run_evaluation import load_dataset, run_case, compute_metrics
+from scripts.run_evaluation import load_dataset, run_case, compute_metrics, MockLLM
 
 
 EVAL_DATASET = Path(project_root) / "data" / "evaluation" / "core_eval_set.json"
@@ -44,8 +44,45 @@ async def test_evaluation_runs_three_representative_cases(mini_dataset):
     assert overall["pass_at_1"] == 1.0
 
 
-def test_core_eval_dataset_has_47_cases():
+def test_core_eval_dataset_has_48_cases():
     dataset = load_dataset(EVAL_DATASET)
-    assert len(dataset) == 47
+    assert len(dataset) == 48
     categories = {case["category"] for case in dataset}
     assert categories == {"intent", "root_cause", "attribution", "llm_decision"}
+
+
+@pytest.mark.asyncio
+async def test_llm_autonomy_dual_state_regression_settlement():
+    """双态回归：settlement 动态 case 关 LLM 走规则 miss、开 LLM 命中精确主因。
+
+    证明 LLM 非摆设——同一 case 的根因关键词「应用错误」只出现在 mock LLM 的
+    受控归因里，规则路径只输出「标签与比例不一致」这类症状描述。
+    """
+    from config import SYSTEM_CONFIG
+
+    dataset = load_dataset(EVAL_DATASET)
+    case = next(r for r in dataset if r["id"] == "llm_decision_004")
+    original = SYSTEM_CONFIG.get("enable_llm_autonomy", False)
+
+    # 关 LLM：显式关闭 autonomy，DataAgent 退回确定性规则路径
+    SYSTEM_CONFIG["enable_llm_autonomy"] = False
+    try:
+        with tempfile.TemporaryDirectory(prefix="diag_eval_off_") as tmp_dir:
+            off = await run_case(case, tmp_dir)
+    finally:
+        SYSTEM_CONFIG["enable_llm_autonomy"] = original
+    assert off["root_cause_ok"] is False
+    assert off["llm_ok"] is False
+    assert off["all_ok"] is False
+
+    # 开 LLM：注入 mock LLM 并打开 autonomy 开关
+    SYSTEM_CONFIG["enable_llm_autonomy"] = True
+    try:
+        with tempfile.TemporaryDirectory(prefix="diag_eval_on_") as tmp_dir:
+            on = await run_case(case, tmp_dir, llm_model=MockLLM())
+    finally:
+        SYSTEM_CONFIG["enable_llm_autonomy"] = original
+
+    assert on["root_cause_ok"] is True
+    assert on["llm_ok"] is True
+    assert on["all_ok"] is True

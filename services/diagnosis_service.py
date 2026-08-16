@@ -15,7 +15,7 @@ import psutil
 
 from agentscope.message import Msg
 
-from config import settings
+from config import SYSTEM_CONFIG, settings
 
 logger = logging.getLogger(__name__)
 
@@ -70,6 +70,7 @@ class DiagnosisService:
         user_id: str = "diagbot_user",
         storage_path: str = "data/memory",
         rag_agent=None,
+        llm_model=None,
     ):
         self.trace_repo = trace_repo or TraceRepository()
         self.skill_registry = SkillRegistry()
@@ -80,8 +81,9 @@ class DiagnosisService:
         self.long_term_memory = LongTermMemory(user_id=user_id, storage_path=storage_path)
         # RAG Agent：外部注入优先，否则尝试懒加载
         self.rag_agent = rag_agent or self._load_rag_agent()
-        # 专业 Agent 局部自主决策共享的 LLM 模型（开关关闭时为 None，保持确定性）
-        self.llm_model = self._build_llm_model()
+        # 专业 Agent 局部自主决策共享的 LLM 模型：外部注入优先（评测/测试用 mock），
+        # 否则按 enable_llm_autonomy 开关构建（关闭时为 None，保持确定性）
+        self.llm_model = llm_model if llm_model is not None else self._build_llm_model()
 
     @staticmethod
     def _build_llm_model():
@@ -89,8 +91,11 @@ class DiagnosisService:
 
         开关关闭、缺少有效 api_key 或初始化失败时返回 None，专业 Agent 退回
         确定性规则路径，保证「规则优先 + LLM 兜底」不破坏可复现性。
+
+        与 BaseDiagnosisAgent._autonomy_enabled 统一读取 SYSTEM_CONFIG，避免
+        评测双态回归（关/开 enable_llm_autonomy）时两套配置源不一致。
         """
-        if not settings.system.enable_llm_autonomy:
+        if not SYSTEM_CONFIG.get("enable_llm_autonomy", False):
             return None
         api_key = settings.llm.api_key
         if not api_key or api_key in {"API_KEY", "your_api_key_here"}:

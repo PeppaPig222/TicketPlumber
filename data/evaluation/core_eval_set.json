@@ -424,5 +424,15 @@
     "expected_root_cause_keywords": ["状态同步", "超时"],
     "expected_rounds": 3,
     "expected_llm_autonomy": true
+  },
+  {
+    "id": "llm_decision_004",
+    "category": "llm_decision",
+    "query": "请诊断工单 WO-20260817-0611 结算标签与分润比例双重异常",
+    "expected_scenario": "settlement_amount_mismatch",
+    "expected_responsible_party": "数据侧（标签脚本）",
+    "expected_root_cause_keywords": ["应用错误"],
+    "expected_rounds": 3,
+    "expected_llm_autonomy": true
   }
 ]

@@ -21,11 +21,69 @@ from typing import Any, Dict, List
 project_root = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(project_root))
 
+from agentscope.message import Msg
 from services.diagnosis_service import DiagnosisService, TraceRepository
 
 
 EVAL_DATASET_PATH = project_root / "data" / "evaluation" / "core_eval_set.json"
 REPORT_DIR = project_root / "data" / "evaluation" / "reports"
+
+
+class MockLLM:
+    """评测专用 mock LLM：无真实 API，按 prompt 特征返回确定性归因/决策。
+
+    双态回归用：开 enable_llm_autonomy 时注入，模拟 LLM 判别主因，
+    证明「LLM 非摆设」——关 LLM 走规则 miss，开 LLM 命中精确主因。
+    """
+
+    async def __call__(self, messages):
+        prompt = messages[-1].get("content", "") if messages else ""
+        return Msg(name="mock-llm", content=self._respond(prompt), role="assistant")
+
+    @staticmethod
+    def _respond(prompt: str) -> str:
+        if "decision 字段三选一" in prompt:
+            return MockLLM._code_decision(prompt)
+        if "conflict_type 必须从候选集选一个" in prompt:
+            return MockLLM._data_attribution(prompt)
+        return "{}"
+
+    @staticmethod
+    def _code_decision(prompt: str) -> str:
+        # 只匹配日志摘要里的真实 error_code（形如 error=REFUND_001），
+        # 不能匹配 prompt 示例文本里的「REFUND_* → ...」，否则会恒命中第一个分支。
+        if "error=REFUND_" in prompt:
+            root_cause = "退款请求参数校验失败"
+        elif "error=CHANNEL_" in prompt:
+            root_cause = "退款通道故障"
+        elif "error=PAY_" in prompt or "error=SYNC_" in prompt:
+            root_cause = "支付回调超时导致状态同步失败"
+        else:
+            root_cause = "订单状态同步异常"
+        return json.dumps(
+            {"decision": "conclude", "root_cause": root_cause, "reason": "按日志 error_code 判别"},
+            ensure_ascii=False,
+        )
+
+    @staticmethod
+    def _data_attribution(prompt: str) -> str:
+        has_timeout = '"has_timeout": true' in prompt or '"has_timeout":true' in prompt
+        ratio_mismatch = '"ratio_mismatch": true' in prompt or '"ratio_mismatch":true' in prompt
+        tag_mismatch = '"tag_mismatch": true' in prompt or '"tag_mismatch":true' in prompt
+        if ratio_mismatch and tag_mismatch:
+            conflict_type, explanation = "label_conflict", "结算标签脚本误刷导致分润比例应用错误"
+        elif has_timeout:
+            conflict_type, explanation = "callback_timeout", "支付回调超时导致订单状态未同步"
+        elif ratio_mismatch:
+            conflict_type, explanation = "ratio_mismatch", "分润比例与合同不一致"
+        elif tag_mismatch:
+            conflict_type, explanation = "label_conflict", "结算标签与合同类型冲突"
+        else:
+            conflict_type, explanation = "both", "跨表不一致且回调超时"
+        return json.dumps(
+            {"conflict_type": conflict_type, "confidence": 0.9, "explanation": explanation},
+            ensure_ascii=False,
+        )
 
 
 def load_dataset(path: Path) -> List[Dict[str, Any]]:
@@ -120,16 +178,23 @@ def evaluate_stages(result: Dict[str, Any], case: Dict[str, Any]) -> Dict[str, A
     has_cross_verify = any(d == "cross_verify" for d in decisions)
     verification_ok = None if not has_cross_verify else agent_ok
 
-    # LLM 自主决策：CodeAgent 是否触发 LLM 深挖（仅对声明 expected_llm_autonomy 的 case 校验）
+    # LLM 自主决策：CodeAgent 探索型深挖 或 DataAgent 受控归因 命中即算 llm_ok
+    # （仅对声明 expected_llm_autonomy 的 case 校验）
     if case.get("expected_llm_autonomy"):
         code_agents = [a for a in agents if a.get("agent_name") == "CodeAgent"]
-        llm_ok = any(
+        data_agents = [a for a in agents if a.get("agent_name") == "DataAgent"]
+        code_llm = any(
             any(
                 "LLM 深挖" in str(e) or "LLM 判定根因" in str(e)
                 for e in a.get("evidence", [])
             )
             for a in code_agents
         )
+        data_llm = any(
+            any("LLM 归因" in str(e) for e in a.get("evidence", []))
+            for a in data_agents
+        )
+        llm_ok = code_llm or data_llm
     else:
         llm_ok = None
 
@@ -178,20 +243,21 @@ def evaluate_case(result: Dict[str, Any], case: Dict[str, Any]) -> Dict[str, Any
     }
 
 
-async def run_case(case: Dict[str, Any], storage_path: str) -> Dict[str, Any]:
+async def run_case(case: Dict[str, Any], storage_path: str, llm_model=None) -> Dict[str, Any]:
     service = DiagnosisService(
         trace_repo=TraceRepository(),
         user_id="eval_user",
         storage_path=storage_path,
+        llm_model=llm_model,
     )
     result = await service.diagnose(case["query"])
     return evaluate_case(result, case)
 
 
-async def run_evaluation(dataset_path: Path) -> Dict[str, Any]:
+async def run_evaluation(dataset_path: Path, llm_model=None) -> Dict[str, Any]:
     dataset = load_dataset(dataset_path)
     with tempfile.TemporaryDirectory(prefix="diag_eval_") as tmp_dir:
-        tasks = [run_case(case, tmp_dir) for case in dataset]
+        tasks = [run_case(case, tmp_dir, llm_model=llm_model) for case in dataset]
         results = await asyncio.gather(*tasks)
 
     metrics = compute_metrics(results)
@@ -426,13 +492,30 @@ def main():
         default=True,
         help="保存详细报告到 data/evaluation/reports/",
     )
+    parser.add_argument(
+        "--llm-autonomy",
+        action="store_true",
+        help="开 LLM 自主（注入 mock LLM 做双态回归，无真实 API 调用）",
+    )
     args = parser.parse_args()
 
     if not args.dataset.exists():
         print(f"数据集不存在: {args.dataset}")
         sys.exit(1)
 
-    report = asyncio.run(run_evaluation(args.dataset))
+    from config import SYSTEM_CONFIG
+
+    llm_model = None
+    if args.llm_autonomy:
+        SYSTEM_CONFIG["enable_llm_autonomy"] = True
+        llm_model = MockLLM()
+        print("已开启 LLM 自主（注入 mock LLM），enable_llm_autonomy=true")
+    else:
+        # 双态回归的基准态：显式关闭 LLM 自主，保证走确定性规则路径（不受 .env 影响）
+        SYSTEM_CONFIG["enable_llm_autonomy"] = False
+        print("已关闭 LLM 自主（确定性规则路径），enable_llm_autonomy=false")
+
+    report = asyncio.run(run_evaluation(args.dataset, llm_model=llm_model))
     print_report(report)
     if args.save:
         save_report(report)
