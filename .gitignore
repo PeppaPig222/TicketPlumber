@@ -43,6 +43,7 @@ data/rag_knowledge/
 data/models/
 data/memory/
 data/test_memory/
+data/test_memory_llm*/
 data/evaluation/reports/
 data/preferences/*.json
 !data/preferences/.gitkeep
