@@ -13,6 +13,7 @@ from typing import Any, Dict, Iterable, List, Optional
 from agentscope.agent import AgentBase
 from agentscope.message import Msg
 
+from config import SYSTEM_CONFIG
 from context.diagnosis_state import AgentResult
 from utils.tool_registry import tool_registry
 
@@ -123,6 +124,35 @@ class BaseDiagnosisAgent(AgentBase):
         if not tools_called:
             return 1.0 if evidence else None
         return min(1.0, round(len(evidence) / len(tools_called), 2))
+
+    def _autonomy_enabled(self) -> bool:
+        """LLM 局部自主是否可用：配置开关开启 且 已注入 LLM 模型。
+
+        测试/降级场景下 model 为 None，直接短路为确定性路径，
+        保证「规则优先 + LLM 兜底」的分层治理。
+        """
+        return bool(SYSTEM_CONFIG.get("enable_llm_autonomy", False)) and self.model is not None
+
+    @staticmethod
+    def _parse_json(raw: str) -> Optional[Dict[str, Any]]:
+        """从 LLM 返回值中容错提取 JSON dict（兼容 markdown code fence 与前后缀）。"""
+        if not raw:
+            return None
+        text = raw.strip()
+        if text.startswith("```"):
+            text = text.strip("`")
+            if text.lower().startswith("json"):
+                text = text[4:]
+            text = text.strip()
+        start = text.find("{")
+        end = text.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            return None
+        try:
+            data = json.loads(text[start:end + 1])
+            return data if isinstance(data, dict) else None
+        except (json.JSONDecodeError, ValueError):
+            return None
 
     async def _call_llm(self, messages: List[Dict[str, str]]) -> Optional[str]:
         """LLM 接入点（阶段2：Agent 局部自主能力的可选增强）。

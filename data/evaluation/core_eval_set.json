@@ -394,5 +394,35 @@
     "expected_responsible_party": "数据侧（标签脚本）",
     "expected_root_cause_keywords": ["标签", "分润比例", "规则不一致"],
     "expected_rounds": 3
+  },
+  {
+    "id": "llm_decision_001",
+    "category": "llm_decision",
+    "query": "商户2037反馈订单ORD-9101状态异常，退款一直失败",
+    "expected_scenario": "order_status_anomaly",
+    "expected_responsible_party": "数据侧（后台脚本）",
+    "expected_root_cause_keywords": ["参数校验"],
+    "expected_rounds": 3,
+    "expected_llm_autonomy": true
+  },
+  {
+    "id": "llm_decision_002",
+    "category": "llm_decision",
+    "query": "商户2037反馈订单ORD-9102退款多日未到账",
+    "expected_scenario": "order_status_anomaly",
+    "expected_responsible_party": "数据侧（后台脚本）",
+    "expected_root_cause_keywords": ["通道"],
+    "expected_rounds": 3,
+    "expected_llm_autonomy": true
+  },
+  {
+    "id": "llm_decision_003",
+    "category": "llm_decision",
+    "query": "商户2037反馈订单ORD-8823退款两天没到账",
+    "expected_scenario": "order_status_anomaly",
+    "expected_responsible_party": "数据侧（后台脚本）",
+    "expected_root_cause_keywords": ["状态同步", "超时"],
+    "expected_rounds": 3,
+    "expected_llm_autonomy": true
   }
 ]

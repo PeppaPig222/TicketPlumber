@@ -3,12 +3,16 @@
 """
 DataAgent：负责数据一致性、跨表校验与标签冲突诊断。
 """
-from typing import Dict, List
+import json
+import logging
+from typing import Dict, List, Optional
 
 from agentscope.message import Msg
 
 from agents.diagnosis_agent_base import BaseDiagnosisAgent
 from agents.diagnosis_agents import _context_value
+
+logger = logging.getLogger(__name__)
 
 
 class DataAgent(BaseDiagnosisAgent):
@@ -88,15 +92,31 @@ class DataAgent(BaseDiagnosisAgent):
         logs = await self._execute_tool("trace_api", api_path="/api/refund/callback", order_id=order_id)
         inconsistencies = snapshot.get("inconsistencies", [])
         has_timeout = any(item.get("status_code") == 505 for item in logs.get("data", []))
+        conflict = bool(inconsistencies or has_timeout)
         summary = "支付表与订单表状态不一致" if inconsistencies else "未发现跨表不一致"
         evidence = [snapshot.get("verdict", "未完成跨表校验")]
         if has_timeout:
             evidence.append("发现订单状态同步超时")
+
+        # 受控 LLM 归因：规则已发现冲突，LLM 在候选集内判别主因（不改变 inconsistency_found）
+        hypothesis = None
+        if conflict:
+            attribution = await self._llm_attribution(
+                {"inconsistencies": inconsistencies, "has_timeout": has_timeout},
+                {"cross_table_mismatch", "callback_timeout", "both"},
+            )
+            if attribution:
+                explanation = attribution.get("explanation") or ""
+                evidence.append(f"LLM 归因：{explanation}")
+                if explanation:
+                    summary = explanation
+                hypothesis = self._build_attribution_hypothesis(attribution, summary)
+
         return self._response(
             status="success",
             summary=summary,
             evidence=evidence,
-            next_actions=["触发交叉验证与归属判定"] if inconsistencies or has_timeout else ["可直接结束诊断"],
+            next_actions=["触发交叉验证与归属判定"] if conflict else ["可直接结束诊断"],
             recommended_skills=["check_data", "trace_api"],
             tools_called=["check_data", "trace_api"],
             data_path_detail={
@@ -104,8 +124,9 @@ class DataAgent(BaseDiagnosisAgent):
                 "inconsistencies": inconsistencies,
                 "logs": logs.get("data", []),
             },
-            inconsistency_found=bool(inconsistencies or has_timeout),
+            inconsistency_found=conflict,
             path_verdict=summary,
+            hypothesis=hypothesis,
         )
 
     async def _asset_round_two(self, context: Dict) -> Msg:
@@ -139,15 +160,32 @@ class DataAgent(BaseDiagnosisAgent):
         settlement_data = settlement.get("data", {}) if settlement.get("status") == "success" else {}
         ratio_mismatch = settlement_data.get("actual_ratio") != settlement_data.get("settlement_ratio")
         tag_mismatch = merchant_data.get("label") and settlement_data.get("contract_type") and merchant_data.get("label") != settlement_data.get("contract_type")
-        summary = "结算标签与比例存在不一致" if ratio_mismatch or tag_mismatch else "未发现明显规则与标签冲突"
+        conflict = bool(ratio_mismatch or tag_mismatch)
+        summary = "结算标签与比例存在不一致" if conflict else "未发现明显规则与标签冲突"
+        evidence = [
+            f"商户标签 {merchant_data.get('label', '未知')}",
+            f"合同类型 {settlement_data.get('contract_type', '未知')}",
+            f"实际比例 {settlement_data.get('actual_ratio', '未知')}",
+        ]
+
+        # 受控 LLM 归因：规则已发现冲突，LLM 在候选集内判别主因（不改变 inconsistency_found）
+        hypothesis = None
+        if conflict:
+            attribution = await self._llm_attribution(
+                {"ratio_mismatch": ratio_mismatch, "tag_mismatch": tag_mismatch},
+                {"ratio_mismatch", "label_conflict", "both"},
+            )
+            if attribution:
+                explanation = attribution.get("explanation") or ""
+                evidence.append(f"LLM 归因：{explanation}")
+                if explanation:
+                    summary = explanation
+                hypothesis = self._build_attribution_hypothesis(attribution, summary)
+
         return self._response(
             status="success",
             summary=summary,
-            evidence=[
-                f"商户标签 {merchant_data.get('label', '未知')}",
-                f"合同类型 {settlement_data.get('contract_type', '未知')}",
-                f"实际比例 {settlement_data.get('actual_ratio', '未知')}",
-            ],
+            evidence=evidence,
             next_actions=["交给 ResolutionAgent 汇总归因"],
             recommended_skills=["query_merchant", "query_settlement"],
             tools_called=["query_merchant", "query_settlement"],
@@ -155,9 +193,62 @@ class DataAgent(BaseDiagnosisAgent):
                 "merchant": merchant_data,
                 "settlement": settlement_data,
             },
-            inconsistency_found=bool(ratio_mismatch or tag_mismatch),
+            inconsistency_found=conflict,
             path_verdict=summary,
+            hypothesis=hypothesis,
         )
+
+    def _attribution_prompt(self, signals: Dict) -> str:
+        """构造受控归因 prompt：规则已发现冲突，LLM 在候选集内判别主因。"""
+        return (
+            "你是工单诊断的数据一致性 Agent。规则校验已发现数据冲突，"
+            "需要你在候选集内判别主因类型。注意：你不做工具选择、不改变流程，"
+            "只负责对已查到的结构化结果做归因解读。\n\n"
+            f"结构化信号：{json.dumps(signals, ensure_ascii=False)}\n\n"
+            "conflict_type 必须从候选集选一个，不得自造：\n"
+            "  订单/退款场景：cross_table_mismatch | callback_timeout | both\n"
+            "  结算场景：ratio_mismatch | label_conflict | both\n\n"
+            "只输出 JSON，不要输出其他内容，格式：\n"
+            '{"conflict_type": "候选值", "confidence": 0.0, "explanation": "归因解释"}'
+        )
+
+    @classmethod
+    def _parse_attribution(cls, raw: str, allowed_types: set) -> Optional[Dict]:
+        """解析 LLM 归因 JSON，conflict_type 必须命中候选集，否则丢弃（受控边界）。"""
+        data = cls._parse_json(raw)
+        if not data or not data.get("conflict_type"):
+            return None
+        if data["conflict_type"] not in allowed_types:
+            logger.warning(
+                "LLM attribution conflict_type out of allowed set",
+                extra={"agent": cls.__name__, "conflict_type": data["conflict_type"]},
+            )
+            return None
+        return data
+
+    async def _llm_attribution(self, signals: Dict, allowed_types: set) -> Optional[Dict]:
+        """受控归因：规则已发现冲突后，LLM 在候选集内判别主因。
+
+        与 CodeAgent 的探索型 LLM 不同，此处 LLM 无工具选择权、无流程跳转权，
+        只是「解读器」——对规则已查到的结构化信号做归因，越界候选集则丢弃。
+        """
+        if not self._autonomy_enabled():
+            return None
+        raw = await self._call_llm([{"role": "user", "content": self._attribution_prompt(signals)}])
+        if not raw:
+            return None
+        return self._parse_attribution(raw, allowed_types)
+
+    def _build_attribution_hypothesis(self, attribution: Dict, fallback_summary: str) -> Dict:
+        """把受控归因结论提升为黑板假设（type 固定为数据侧证据维度 db_state）。"""
+        explanation = attribution.get("explanation") or fallback_summary
+        return {
+            "type": "db_state",
+            "detail": explanation,
+            "status": "pending",
+            "proposed_by": "DataAgent",
+            "evidence": [explanation],
+        }
 
     async def _follow_up(self, context: Dict) -> Msg:
         scenario = context.get("scenario")

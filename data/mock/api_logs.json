@@ -48,5 +48,65 @@
     "response_body": {"code": 0, "message": "success", "refund_status": "processing"},
     "called_at": "2026-08-13T14:32:30",
     "note": "退款查询返回处理中状态"
+  },
+  {
+    "api_path": "/api/refund/callback",
+    "order_id": "ORD-9101",
+    "status_code": 200,
+    "response_time_ms": 210,
+    "error_code": null,
+    "response_body": {"code": 0, "message": "success"},
+    "called_at": "2026-08-14T10:11:12",
+    "note": "回调返回200，但退款状态未更新"
+  },
+  {
+    "api_path": "/api/refund/callback",
+    "order_id": "ORD-9101",
+    "status_code": 400,
+    "response_time_ms": 150,
+    "error_code": "REFUND_001",
+    "response_body": {"code": 400, "message": "参数校验失败"},
+    "called_at": "2026-08-14T10:11:13",
+    "note": "退款请求参数校验失败（金额格式非法）"
+  },
+  {
+    "api_path": "/api/refund/query",
+    "order_id": "ORD-9101",
+    "status_code": 200,
+    "response_time_ms": 140,
+    "error_code": null,
+    "response_body": {"code": 0, "message": "success", "refund_status": "failed"},
+    "called_at": "2026-08-14T10:11:15",
+    "note": "退款查询返回失败，原因为参数校验不通过"
+  },
+  {
+    "api_path": "/api/refund/callback",
+    "order_id": "ORD-9102",
+    "status_code": 200,
+    "response_time_ms": 205,
+    "error_code": null,
+    "response_body": {"code": 0, "message": "success"},
+    "called_at": "2026-08-14T11:22:33",
+    "note": "回调返回200，但退款未到账"
+  },
+  {
+    "api_path": "/api/refund/callback",
+    "order_id": "ORD-9102",
+    "status_code": 502,
+    "response_time_ms": 3000,
+    "error_code": "CHANNEL_003",
+    "response_body": {"code": 502, "message": "channel error"},
+    "called_at": "2026-08-14T11:22:35",
+    "note": "退款通道故障，银行侧无响应"
+  },
+  {
+    "api_path": "/api/refund/query",
+    "order_id": "ORD-9102",
+    "status_code": 200,
+    "response_time_ms": 160,
+    "error_code": null,
+    "response_body": {"code": 0, "message": "success", "refund_status": "channel_error"},
+    "called_at": "2026-08-14T11:22:37",
+    "note": "退款查询返回通道异常状态"
   }
 ]

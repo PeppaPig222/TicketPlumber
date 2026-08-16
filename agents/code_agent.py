@@ -13,7 +13,6 @@ from typing import Dict, List, Optional
 
 from agentscope.message import Msg
 
-from config import SYSTEM_CONFIG
 from agents.diagnosis_agent_base import BaseDiagnosisAgent
 from agents.diagnosis_agents import _context_value
 
@@ -136,6 +135,17 @@ class CodeAgent(BaseDiagnosisAgent):
             code_path_detail["llm_decision"] = llm_decision
             code_path_detail["llm_autonomy"] = True
 
+        # 阶段1：把 LLM 深挖结论提升为黑板假设，供 Scheduler 按证据维度路由
+        hypothesis = None
+        if llm_decision and llm_decision.get("root_cause"):
+            hypothesis = {
+                "type": "api_trace",
+                "detail": llm_decision["root_cause"],
+                "status": "pending",
+                "proposed_by": "CodeAgent",
+                "evidence": [f"LLM 判定根因：{llm_decision['root_cause']}"],
+            }
+
         return self._response(
             status="success",
             summary=verdict,
@@ -145,14 +155,8 @@ class CodeAgent(BaseDiagnosisAgent):
             tools_called=tools_called,
             code_path_detail=code_path_detail,
             path_verdict=verdict,
+            hypothesis=hypothesis,
         )
-
-    def _autonomy_enabled(self) -> bool:
-        """LLM 自主决策是否可用：配置开关开启 且 已注入 LLM 模型。
-
-        测试/降级场景下 model 为 None，直接短路为确定性路径。
-        """
-        return bool(SYSTEM_CONFIG.get("enable_llm_autonomy", False)) and self.model is not None
 
     @staticmethod
     def _is_ambiguous(log_items: List[Dict]) -> bool:
@@ -185,36 +189,26 @@ class CodeAgent(BaseDiagnosisAgent):
             f"订单号：{order_id}\n"
             f"配置摘要：{json.dumps(config_data, ensure_ascii=False)}\n"
             f"日志：\n{logs_summary}\n\n"
-            "可选决策（decision 字段三选一）：\n"
+            "决策（decision 字段三选一）：\n"
             "1. trace_deeper：继续追踪其他接口日志（api_path 候选 /api/order/sync 或 /api/refund/query）\n"
             "2. config_check：检查某个配置项（config_key 可选）\n"
-            "3. conclude：证据已足够，直接给出根因（root_cause）\n\n"
+            "3. conclude：证据已足够\n\n"
+            "root_cause 必填：根据日志 error_code/note 给出根因判断，例如：\n"
+            "  PAY_* → 支付回调超时导致状态同步失败；\n"
+            "  REFUND_* → 退款请求参数校验失败；\n"
+            "  CHANNEL_* → 退款通道故障；\n"
+            "  无 error_code 但有超时/失败 note → 按 note 归纳根因。\n\n"
             "只输出 JSON，不要输出其他内容，格式：\n"
             '{"decision": "trace_deeper|config_check|conclude", "api_path": "...", '
-            '"config_key": "...", "root_cause": "...", "reason": "..."}'
+            '"config_key": "...", "root_cause": "根因判断", "reason": "..."}'
         )
 
-    @staticmethod
-    def _parse_decision(raw: str) -> Optional[Dict]:
-        """解析 LLM 返回的 JSON 决策，容错处理 markdown code fence 与前后缀。"""
-        if not raw:
-            return None
-        text = raw.strip()
-        if text.startswith("```"):
-            text = text.strip("`")
-            if text.lower().startswith("json"):
-                text = text[4:]
-            text = text.strip()
-        start = text.find("{")
-        end = text.rfind("}")
-        if start == -1 or end == -1 or end <= start:
-            return None
-        try:
-            data = json.loads(text[start:end + 1])
-            if isinstance(data, dict) and "decision" in data:
-                return data
-        except (json.JSONDecodeError, ValueError):
-            return None
+    @classmethod
+    def _parse_decision(cls, raw: str) -> Optional[Dict]:
+        """解析 LLM 决策 JSON：复用基类 JSON 容错提取，额外校验 decision 字段。"""
+        data = cls._parse_json(raw)
+        if data and "decision" in data:
+            return data
         return None
 
     async def _llm_deep_dive(

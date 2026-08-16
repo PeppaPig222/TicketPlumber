@@ -44,8 +44,8 @@ async def test_evaluation_runs_three_representative_cases(mini_dataset):
     assert overall["pass_at_1"] == 1.0
 
 
-def test_core_eval_dataset_has_44_cases():
+def test_core_eval_dataset_has_47_cases():
     dataset = load_dataset(EVAL_DATASET)
-    assert len(dataset) == 44
+    assert len(dataset) == 47
     categories = {case["category"] for case in dataset}
-    assert categories == {"intent", "root_cause", "attribution"}
+    assert categories == {"intent", "root_cause", "attribution", "llm_decision"}

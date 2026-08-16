@@ -15,6 +15,7 @@ from agents.scheduling.strategy_matrix import (
     DeepLogConditionalRule,
     CrossDomainDependencyRule,
     RAGBusinessParallelRule,
+    HypothesisRoutingRule,
 )
 
 __all__ = [
@@ -26,4 +27,5 @@ __all__ = [
     "DeepLogConditionalRule",
     "CrossDomainDependencyRule",
     "RAGBusinessParallelRule",
+    "HypothesisRoutingRule",
 ]

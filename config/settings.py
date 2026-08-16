@@ -245,6 +245,10 @@ class SchedulingSettings(BaseSettings):
         default=True,
         description="是否启用策略矩阵调度",
     )
+    enable_hypothesis_routing: bool = Field(
+        default=False,
+        description="是否启用假设驱动路由（扫描黑板 pending hypothesis，merge 去重追加候选 Agent）",
+    )
     enable_basic_info_parallel: bool = Field(
         default=True,
         description="基础信息查询统一并行策略",

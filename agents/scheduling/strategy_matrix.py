@@ -20,6 +20,17 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from config import SCHEDULING_CONFIG
 
+# 假设类型 → 候选 Agent（证据维度路由映射，一对多，体现「路由 = 验证能力映射」）
+# type 是「证据维度」闭集，不是「嫌疑 Agent」映射，也不是 scenario 换皮。
+HYPOTHESIS_ROUTING: Dict[str, List[str]] = {
+    "api_trace": ["CodeAgent"],
+    "db_state": ["DataAgent"],
+    "config_state": ["CodeAgent", "OperationAgent"],
+    "biz_flow": ["OperationAgent"],
+    "policy": ["OperationAgent", "DataAgent"],
+    "cross_verify": ["CodeAgent", "DataAgent"],
+}
+
 
 @dataclass
 class SchedulingContext:
@@ -439,6 +450,94 @@ class RAGBusinessParallelRule(SchedulingRule):
         return tasks
 
 
+class HypothesisRoutingRule(SchedulingRule):
+    """假设驱动路由策略
+
+    扫描黑板（collected_data.facts）中的 pending hypothesis，按证据维度路由到
+    候选 Agent，merge（追加去重）进静态矩阵基线：
+    - 候选 Agent 已在基线中 → 去重，保留基线 reason，附加假设 detail 到 expected_output；
+    - 候选 Agent 不在基线中 → 追加为新的验证任务。
+    不 override 基线，保证高频场景的确定性覆盖不丢失。
+
+    由 SCHEDULING_CONFIG["enable_hypothesis_routing"] 开关控制，默认关闭；
+    无假设时行为与静态矩阵完全一致。
+    """
+
+    name = "hypothesis_routing"
+
+    def apply(
+        self,
+        ctx: SchedulingContext,
+        tasks: List[AgentTask],
+        metadata: Dict[str, Any],
+    ) -> List[AgentTask]:
+        if not SCHEDULING_CONFIG.get("enable_hypothesis_routing", False):
+            metadata["hypothesis_routing_enabled"] = False
+            return tasks
+
+        pending = self._collect_pending_hypotheses(ctx)
+        if not pending:
+            metadata["hypothesis_routing_enabled"] = True
+            metadata["pending_hypotheses"] = []
+            return tasks
+
+        existing = {task.agent_name: task for task in tasks}
+        for hyp in pending:
+            detail = hyp.get("detail") or ""
+            for agent_name in HYPOTHESIS_ROUTING.get(hyp.get("type"), []):
+                if agent_name in existing:
+                    task = existing[agent_name]
+                    if detail and detail not in task.expected_output:
+                        task.expected_output = f"{task.expected_output}；待验证假设：{detail}"
+                    task.strategy = self._mark_strategy(task.strategy)
+                else:
+                    task = AgentTask(
+                        agent_name=agent_name,
+                        priority=1,
+                        reason=f"验证假设（{hyp.get('type')}）",
+                        expected_output=f"待验证假设：{detail}" if detail else "验证待决假设",
+                        strategy=self.name,
+                    )
+                    tasks.append(task)
+                    existing[agent_name] = task
+
+        metadata["hypothesis_routing_enabled"] = True
+        metadata["pending_hypotheses"] = pending
+        return tasks
+
+    @staticmethod
+    def _collect_pending_hypotheses(ctx: SchedulingContext) -> List[Dict[str, Any]]:
+        """从黑板事实中收集所有 pending 假设（兼容复数累积与单数直存）。"""
+        pending: List[Dict[str, Any]] = []
+        seen: List[str] = []
+
+        hypotheses = ctx.facts.get("hypotheses")
+        if isinstance(hypotheses, dict):
+            hypotheses = [hypotheses]
+        for hyp in hypotheses or []:
+            if isinstance(hyp, dict) and hyp.get("status") == "pending" and hyp.get("type"):
+                key = f"{hyp.get('type')}:{hyp.get('detail')}"
+                if key not in seen:
+                    seen.append(key)
+                    pending.append(hyp)
+
+        single = ctx.facts.get("hypothesis")
+        if isinstance(single, dict) and single.get("status") == "pending" and single.get("type"):
+            key = f"{single.get('type')}:{single.get('detail')}"
+            if key not in seen:
+                pending.append(single)
+
+        return pending
+
+    @staticmethod
+    def _mark_strategy(strategy: str) -> str:
+        if "hypothesis_routing" in strategy:
+            return strategy
+        if not strategy or strategy == "base":
+            return "hypothesis_routing"
+        return f"{strategy}+hypothesis_routing"
+
+
 class StrategyMatrix:
     """调度策略矩阵入口
 
@@ -462,6 +561,7 @@ class StrategyMatrix:
             DeepLogConditionalRule(),
             CrossDomainDependencyRule(),
             RAGBusinessParallelRule(),
+            HypothesisRoutingRule(),
         ]
 
     def build(

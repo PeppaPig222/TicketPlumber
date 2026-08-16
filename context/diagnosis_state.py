@@ -39,6 +39,10 @@ class AgentResult(BaseModel):
     degraded: bool = False
     # 结构化不一致信号：替代对 summary 做 "不一致" 字符串包含判断
     inconsistency_found: Optional[bool] = None
+    # 假设（Hypothesis）：Agent 提出的待验证诊断假设，供 Scheduler 按证据维度路由
+    # 结构：{"type": 证据维度, "detail": 具体假设, "status": pending/verified/refuted,
+    #        "proposed_by": Agent 名, "evidence": [支撑证据]}
+    hypothesis: Optional[Dict[str, Any]] = None
 
     @model_validator(mode="after")
     def _sync_degraded(self) -> "AgentResult":
@@ -90,11 +94,22 @@ class DiagnosisState(BaseModel):
                 self.facts[key] = value
 
     def merge_round(self, round_result: Dict[str, Any]) -> None:
-        """合并单轮 agent 结果中的业务事实，控制字段由 EXCLUDED_KEYS 排除。"""
+        """合并单轮 agent 结果中的业务事实，控制字段由 EXCLUDED_KEYS 排除。
+
+        假设字段（hypothesis）跨 Agent 累积到 facts["hypotheses"] 列表，
+        避免多个 Agent 各自产出的假设互相覆盖；其余字段保持覆盖语义。
+        """
         for result in round_result.get("results", []):
             data = result.get("data", {}) or {}
             for key, value in data.items():
                 if key in self.EXCLUDED_KEYS:
+                    continue
+                if key == "hypothesis" and isinstance(value, dict):
+                    hypotheses = self.facts.get("hypotheses")
+                    if not isinstance(hypotheses, list):
+                        hypotheses = []
+                    hypotheses.append(value)
+                    self.facts["hypotheses"] = hypotheses
                     continue
                 self.facts[key] = value
 

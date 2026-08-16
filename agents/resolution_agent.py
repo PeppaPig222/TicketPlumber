@@ -3,7 +3,7 @@
 """
 ResolutionAgent：负责证据汇总、冲突消解与责任归属判定。
 """
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from agentscope.message import Msg
 
@@ -209,6 +209,19 @@ class ResolutionAgent(BaseDiagnosisAgent):
             },
         ]
 
+    @staticmethod
+    def _llm_root_cause(code: Dict, context: Dict) -> Optional[str]:
+        """从 CodeAgent 的 LLM 深挖结论提取根因。
+
+        优先读 previous_results 里的 CodeAgent；跨轮场景（LLM 深挖发生在
+        Round 2 的 CodeAgent、Resolution 在 Round 3）回退到 facts 黑板读取。
+        """
+        code_detail = code.get("code_path_detail") or {}
+        if not code_detail.get("llm_decision"):
+            collected_facts = (context.get("collected_data") or {}).get("facts", {})
+            code_detail = collected_facts.get("code_path_detail") or {}
+        return (code_detail.get("llm_decision") or {}).get("root_cause")
+
     async def _resolve_order(self, context: Dict, previous_results: List[Dict]) -> Msg:
         history_result = await self._run_skill(
             "search_history_ticket",
@@ -253,7 +266,8 @@ class ResolutionAgent(BaseDiagnosisAgent):
             responsible_party_matrix=self._build_responsibility_matrix(
                 scenario, previous_results
             ),
-            root_cause="退款回调后订单状态同步任务超时，导致订单状态未更新。",
+            root_cause=self._llm_root_cause(code, context)
+            or "退款回调后订单状态同步任务超时，导致订单状态未更新。",
             recommendations=[
                 "手动修复 ORD-8823 的订单状态",
                 "排查退款回调脚本死锁与重试耗尽问题",

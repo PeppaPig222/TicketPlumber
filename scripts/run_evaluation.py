@@ -120,6 +120,19 @@ def evaluate_stages(result: Dict[str, Any], case: Dict[str, Any]) -> Dict[str, A
     has_cross_verify = any(d == "cross_verify" for d in decisions)
     verification_ok = None if not has_cross_verify else agent_ok
 
+    # LLM 自主决策：CodeAgent 是否触发 LLM 深挖（仅对声明 expected_llm_autonomy 的 case 校验）
+    if case.get("expected_llm_autonomy"):
+        code_agents = [a for a in agents if a.get("agent_name") == "CodeAgent"]
+        llm_ok = any(
+            any(
+                "LLM 深挖" in str(e) or "LLM 判定根因" in str(e)
+                for e in a.get("evidence", [])
+            )
+            for a in code_agents
+        )
+    else:
+        llm_ok = None
+
     return {
         "intent_ok": intent_ok,
         "entity_ok": entity_ok,
@@ -127,6 +140,7 @@ def evaluate_stages(result: Dict[str, Any], case: Dict[str, Any]) -> Dict[str, A
         "tool_ok": tool_ok,
         "agent_ok": agent_ok,
         "verification_ok": verification_ok,
+        "llm_ok": llm_ok,
     }
 
 
@@ -197,6 +211,7 @@ STAGE_LABELS = {
     "tool": "Tool（工具调用）",
     "agent": "Agent（诊断结论）",
     "verification": "Verification（交叉验证）",
+    "llm": "LLM（动态决策）",
 }
 
 

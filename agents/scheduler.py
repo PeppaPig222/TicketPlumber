@@ -51,6 +51,9 @@ _FACTS_DOMAINS = {
 # 实体类事实始终保留（_context_value 依赖它们从 facts 取实体）
 _ENTITY_FACT_KEYS = {"ticket_id", "order_id", "merchant_id", "issue_type", "scenario"}
 
+# 协作字段：跨 Agent 全局可读，不参与 fact_domains 裁剪（假设路由/验证依赖它们）
+_COLLABORATION_FACT_KEYS = {"hypotheses", "pending_hypotheses"}
+
 # 各专业 Agent 的上下文画像：字段白名单 + 关注的事实域
 # fields=None 表示保留全量（结论侧需要 rewritten_query / 记忆上下文做 RAG）
 _AGENT_CONTEXT_PROFILE = {
@@ -119,6 +122,16 @@ class Scheduler:
         intention_data = dict(intention_data)
         intention_data["agent_schedule"] = agent_schedule
         intention_data["schedule_metadata"] = schedule_metadata
+
+        # 注入验证任务：把待验证假设作为协作字段写入黑板 facts，
+        # 经 _COLLABORATION_FACT_KEYS 常驻白名单透传，不被 Role-aware 裁剪
+        pending_hypotheses = schedule_metadata.get("pending_hypotheses")
+        if pending_hypotheses:
+            collected = dict(intention_data.get("collected_data") or {})
+            facts = dict(collected.get("facts") or {})
+            facts["pending_hypotheses"] = pending_hypotheses
+            collected["facts"] = facts
+            intention_data["collected_data"] = collected
 
         if not agent_schedule:
             return {
@@ -231,7 +244,7 @@ class Scheduler:
         if fact_domains:
             collected = role_context.get("collected_data") or {}
             facts = dict(collected.get("facts") or {})
-            allowed = set(_ENTITY_FACT_KEYS)
+            allowed = set(_ENTITY_FACT_KEYS) | set(_COLLABORATION_FACT_KEYS)
             for domain in fact_domains:
                 allowed |= _FACTS_DOMAINS.get(domain, set())
             filtered_facts = {k: v for k, v in facts.items() if k in allowed}

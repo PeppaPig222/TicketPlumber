@@ -11,6 +11,7 @@ from agents.scheduling.strategy_matrix import (
     CrossDomainDependencyRule,
     DeepLogConditionalRule,
     RAGBusinessParallelRule,
+    HypothesisRoutingRule,
     ScenarioScheduleBuilder,
     SchedulingContext,
     StrategyMatrix,
@@ -167,10 +168,115 @@ class TestRAGBusinessParallelRule:
         assert "RAGKnowledgeAgent" not in [t.agent_name for t in result]
 
 
+class TestHypothesisRoutingRule:
+    def test_disabled_does_nothing(self, monkeypatch):
+        from agents.scheduling import strategy_matrix
+
+        monkeypatch.setitem(
+            strategy_matrix.SCHEDULING_CONFIG,
+            "enable_hypothesis_routing",
+            False,
+        )
+        ctx = SchedulingContext(
+            scenario="order_status_anomaly",
+            round_num=2,
+            collected_data={"facts": {"hypothesis": {"type": "api_trace", "detail": "回调超时", "status": "pending"}}},
+        )
+        tasks = ScenarioScheduleBuilder().build(ctx)
+        rule = HypothesisRoutingRule()
+        meta = {}
+        result = rule.apply(ctx, tasks, meta)
+        assert meta["hypothesis_routing_enabled"] is False
+        assert result == tasks
+
+    def test_no_pending_returns_unchanged(self, monkeypatch):
+        from agents.scheduling import strategy_matrix
+
+        monkeypatch.setitem(
+            strategy_matrix.SCHEDULING_CONFIG,
+            "enable_hypothesis_routing",
+            True,
+        )
+        ctx = SchedulingContext(scenario="order_status_anomaly", round_num=2)
+        tasks = ScenarioScheduleBuilder().build(ctx)
+        rule = HypothesisRoutingRule()
+        meta = {}
+        result = rule.apply(ctx, tasks, meta)
+        assert meta["hypothesis_routing_enabled"] is True
+        assert meta["pending_hypotheses"] == []
+        assert result == tasks
+
+    def test_dedupe_existing_agent(self, monkeypatch):
+        from agents.scheduling import strategy_matrix
+
+        monkeypatch.setitem(
+            strategy_matrix.SCHEDULING_CONFIG,
+            "enable_hypothesis_routing",
+            True,
+        )
+        ctx = SchedulingContext(
+            scenario="order_status_anomaly",
+            round_num=2,
+            collected_data={"facts": {"hypothesis": {"type": "db_state", "detail": "跨表状态不一致", "status": "pending"}}},
+        )
+        tasks = ScenarioScheduleBuilder().build(ctx)
+        rule = HypothesisRoutingRule()
+        meta = {}
+        result = rule.apply(ctx, tasks, meta)
+        assert meta["hypothesis_routing_enabled"] is True
+        assert len(meta["pending_hypotheses"]) == 1
+        names = [t.agent_name for t in result]
+        assert names.count("DataAgent") == 1
+        data_task = [t for t in result if t.agent_name == "DataAgent"][0]
+        assert "待验证假设：跨表状态不一致" in data_task.expected_output
+
+    def test_appends_new_agent_not_in_baseline(self, monkeypatch):
+        from agents.scheduling import strategy_matrix
+
+        monkeypatch.setitem(
+            strategy_matrix.SCHEDULING_CONFIG,
+            "enable_hypothesis_routing",
+            True,
+        )
+        ctx = SchedulingContext(
+            scenario="generic_ticket_diagnosis",
+            round_num=1,
+            collected_data={"facts": {"hypothesis": {"type": "api_trace", "detail": "回调未调用", "status": "pending"}}},
+        )
+        tasks = ScenarioScheduleBuilder().build(ctx)
+        assert "CodeAgent" not in [t.agent_name for t in tasks]
+        rule = HypothesisRoutingRule()
+        meta = {}
+        result = rule.apply(ctx, tasks, meta)
+        assert "CodeAgent" in [t.agent_name for t in result]
+        code_task = [t for t in result if t.agent_name == "CodeAgent"][0]
+        assert code_task.strategy == "hypothesis_routing"
+
+    def test_collects_from_accumulated_hypotheses(self, monkeypatch):
+        from agents.scheduling import strategy_matrix
+
+        monkeypatch.setitem(
+            strategy_matrix.SCHEDULING_CONFIG,
+            "enable_hypothesis_routing",
+            True,
+        )
+        ctx = SchedulingContext(
+            scenario="order_status_anomaly",
+            round_num=2,
+            collected_data={"facts": {"hypotheses": [
+                {"type": "api_trace", "detail": "回调超时", "status": "pending"},
+                {"type": "db_state", "detail": "状态不一致", "status": "pending"},
+                {"type": "db_state", "detail": "状态不一致", "status": "pending"},
+            ]}},
+        )
+        pending = HypothesisRoutingRule._collect_pending_hypotheses(ctx)
+        assert len(pending) == 2
+
+
 class TestStrategyMatrix:
     def test_default_rules(self):
         matrix = StrategyMatrix()
-        assert len(matrix.rules) == 4
+        assert len(matrix.rules) == 5
 
     def test_build_returns_metadata(self):
         ctx = SchedulingContext(
