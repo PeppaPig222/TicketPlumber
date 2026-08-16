@@ -475,3 +475,24 @@ core_eval_set.json
 
 - `.gitignore` 补全运行时产物：`frontend/node_modules`、`frontend/dist`、`data/models`、`data/evaluation/reports`、`data/test_memory`、`data/memory`、`.claude/*.json`
 - 用 `git filter-repo` 从历史清除敏感配置（`.claude/claudian-settings.json` 含代理/AWS ARN）及依赖/产物，`.git` 体积 96M → 35M。
+
+### 偏移 6：Role-aware Context（偏离「统一上下文注入」）
+
+- **原实现**：`Scheduler._prepare_context` 给所有 Agent 注入同一份上下文（含 reasoning/intents/rewritten_query/recent_dialogue/user_preferences），无角色差异化、无过滤。
+- **偏移**：引入 `_AGENT_CONTEXT_PROFILE` 画像 + `_build_role_context`，按角色裁剪上下文（对应 README 架构图中的 Role-aware Context 层）。
+- **实现**：
+  - 字段白名单：执行侧 Agent（Code/Operation/Data）剔除意图/记忆/调度等无关字段，只保留 scenario/round_num/query/ticket/issue_type/key_entities/collected_data
+  - 事实域过滤：`collected_data.facts` 按角色关注域过滤（CodeAgent→order+settlement，OperationAgent→order+merchant+knowledge，DataAgent→order+asset+settlement），实体 key（ticket_id/order_id/merchant_id/issue_type/scenario）始终保留
+  - 结论侧 ResolutionAgent 保留全量（需 rewritten_query/记忆上下文做 RAG）
+- **验证**：回归 115 passed，离线评测 5 项指标 100% 无降级。
+
+### 偏移 7：协作证据链 + 分层自主性边界控制
+
+- **原实现**：专业 Agent 的 Tool 调用无白名单（`_round_two` 直接 `tool_registry.execute`），输出无统一证据覆盖率；`Skill` 白名单已存在但 `Tool` 白名单缺失。
+- **偏移**：引入「确定性 Guardrail + 角色化 Agent」分层治理，落地「探索自主、判定受控」：
+  - `allowed_tools` 工具白名单 + `_execute_tool` 执行层物理隔离（越界调用返回 error 并记录）
+  - `max_steps` 单 Agent 探索步数上限（ReAct 护栏）
+  - `AgentResult` 加 `findings` + `evidence_coverage`（启发式覆盖度，明确命名为覆盖度而非 `confidence`，避免名不副实）；`EXCLUDED_KEYS` 同步排除，防污染 facts
+  - `enable_llm_autonomy` 开关（默认关闭）+ `_call_llm` LLM 接入点（无 model 降级规则路径）
+- **定位结论**：保持「确定性 Scheduler 作为 Guardrail + Agent 局部自主可选」，不引入全自主 LLM 协商（过度设计）。完整 ReAct/Plan-and-Execute 循环留待「真实 LLM API + 真实数据」两个前置条件满足后启用。
+- **验证**：回归 115 passed，离线评测 5 项指标 100% 无降级。

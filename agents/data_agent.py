@@ -9,7 +9,6 @@ from agentscope.message import Msg
 
 from agents.diagnosis_agent_base import BaseDiagnosisAgent
 from agents.diagnosis_agents import _context_value
-from utils.tool_registry import tool_registry
 
 
 class DataAgent(BaseDiagnosisAgent):
@@ -25,6 +24,15 @@ class DataAgent(BaseDiagnosisAgent):
         "ValidateFrontendState",
         "GetBillCalculation",
         "settlement_contract_path",
+    }
+
+    # 工具白名单（执行层物理隔离）：只允许数据侧排查工具
+    allowed_tools = {
+        "check_data",
+        "trace_api",
+        "query_asset",
+        "query_merchant",
+        "query_settlement",
     }
 
     async def reply(self, x: Msg = None) -> Msg:
@@ -76,8 +84,8 @@ class DataAgent(BaseDiagnosisAgent):
 
     async def _order_round_two(self, context: Dict) -> Msg:
         order_id = _context_value(context, "order_id")
-        snapshot = await tool_registry.execute("check_data", order_id=order_id)
-        logs = await tool_registry.execute("trace_api", api_path="/api/refund/callback", order_id=order_id)
+        snapshot = await self._execute_tool("check_data", order_id=order_id)
+        logs = await self._execute_tool("trace_api", api_path="/api/refund/callback", order_id=order_id)
         inconsistencies = snapshot.get("inconsistencies", [])
         has_timeout = any(item.get("status_code") == 505 for item in logs.get("data", []))
         summary = "支付表与订单表状态不一致" if inconsistencies else "未发现跨表不一致"
@@ -102,7 +110,7 @@ class DataAgent(BaseDiagnosisAgent):
 
     async def _asset_round_two(self, context: Dict) -> Msg:
         merchant_id = _context_value(context, "merchant_id")
-        asset_result = await tool_registry.execute("query_asset", merchant_id=merchant_id)
+        asset_result = await self._execute_tool("query_asset", merchant_id=merchant_id)
         asset = asset_result.get("data", {}) if asset_result.get("status") == "success" else {}
         request = asset.get("allocation_request", {})
         available = asset.get("available_quota", 0)
@@ -125,8 +133,8 @@ class DataAgent(BaseDiagnosisAgent):
 
     async def _settlement_round_two(self, context: Dict) -> Msg:
         merchant_id = _context_value(context, "merchant_id")
-        merchant = await tool_registry.execute("query_merchant", merchant_id=merchant_id)
-        settlement = await tool_registry.execute("query_settlement", merchant_id=merchant_id)
+        merchant = await self._execute_tool("query_merchant", merchant_id=merchant_id)
+        settlement = await self._execute_tool("query_settlement", merchant_id=merchant_id)
         merchant_data = merchant.get("data", {}) if merchant.get("status") == "success" else {}
         settlement_data = settlement.get("data", {}) if settlement.get("status") == "success" else {}
         ratio_mismatch = settlement_data.get("actual_ratio") != settlement_data.get("settlement_ratio")

@@ -9,7 +9,6 @@ from agentscope.message import Msg
 
 from agents.diagnosis_agent_base import BaseDiagnosisAgent
 from agents.diagnosis_agents import _context_value
-from utils.tool_registry import tool_registry
 
 
 class CodeAgent(BaseDiagnosisAgent):
@@ -28,6 +27,13 @@ class CodeAgent(BaseDiagnosisAgent):
         "GetBillingConfig",
         "GetBillCalculation",
         "GetReconciliation",
+    }
+
+    # 工具白名单（执行层物理隔离）：只允许代码侧排查工具
+    allowed_tools = {
+        "trace_api",
+        "check_config",
+        "query_settlement",
     }
 
     async def reply(self, x: Msg = None) -> Msg:
@@ -80,8 +86,8 @@ class CodeAgent(BaseDiagnosisAgent):
     async def _order_round_two(self, context: Dict) -> Msg:
         order_id = _context_value(context, "order_id")
         merchant_id = _context_value(context, "merchant_id")
-        logs = await tool_registry.execute("trace_api", api_path="/api/refund/callback", order_id=order_id)
-        config = await tool_registry.execute("check_config", merchant_id=merchant_id)
+        logs = await self._execute_tool("trace_api", api_path="/api/refund/callback", order_id=order_id)
+        config = await self._execute_tool("check_config", merchant_id=merchant_id)
         log_items = logs.get("data", [])
         config_data = config.get("data", {})
         has_success = any(item.get("status_code") == 200 for item in log_items)
@@ -108,7 +114,7 @@ class CodeAgent(BaseDiagnosisAgent):
 
     async def _asset_round_two(self, context: Dict) -> Msg:
         merchant_id = _context_value(context, "merchant_id")
-        config = await tool_registry.execute("check_config", merchant_id=merchant_id)
+        config = await self._execute_tool("check_config", merchant_id=merchant_id)
         permissions = (config.get("data") or {}).get("permissions", [])
         can_allocate = "asset_allocate" in permissions
         summary = "代码侧未发现系统开关异常" if can_allocate else "操作者侧权限配置可能不足"
@@ -128,7 +134,7 @@ class CodeAgent(BaseDiagnosisAgent):
 
     async def _settlement_round_two(self, context: Dict) -> Msg:
         merchant_id = _context_value(context, "merchant_id")
-        settlement = await tool_registry.execute("query_settlement", merchant_id=merchant_id)
+        settlement = await self._execute_tool("query_settlement", merchant_id=merchant_id)
         data = settlement.get("data", {}) if settlement.get("status") == "success" else {}
         inconsistent = data.get("actual_ratio") != data.get("settlement_ratio")
         summary = "结算计算链路命中比例不一致" if inconsistent else "结算计算链路正常"

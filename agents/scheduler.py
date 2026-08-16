@@ -24,6 +24,64 @@ from agents.scheduling import SchedulingContext, StrategyMatrix
 logger = logging.getLogger(__name__)
 
 
+# ========== Role-aware Context：按角色裁剪上下文 ==========
+
+# 事实域：collected_data.facts 中业务字段的归属，用于按角色过滤无关事实
+_FACTS_DOMAINS = {
+    "order": {
+        "order_detail", "order_timeline", "refund", "timeline",
+        "frontend_state", "backend_state",
+    },
+    "asset": {
+        "asset_pool", "asset_allocation", "allocation_request", "user_binding",
+        "recycle", "protection_period", "billing_config", "product_catalog",
+    },
+    "settlement": {
+        "merchant_contract", "bill_detail", "settlement_rule", "bill_calculation",
+        "settlement_status", "settlement_timeline", "reconciliation", "invoice",
+        "payment_channel",
+    },
+    "merchant": {
+        "merchant_profile", "coop_status", "contract", "org_tree",
+        "permissions", "onboarding", "blacklist",
+    },
+    "knowledge": {"history_matches", "policy_matches"},
+}
+
+# 实体类事实始终保留（_context_value 依赖它们从 facts 取实体）
+_ENTITY_FACT_KEYS = {"ticket_id", "order_id", "merchant_id", "issue_type", "scenario"}
+
+# 各专业 Agent 的上下文画像：字段白名单 + 关注的事实域
+# fields=None 表示保留全量（结论侧需要 rewritten_query / 记忆上下文做 RAG）
+_AGENT_CONTEXT_PROFILE = {
+    "CodeAgent": {
+        "fields": {
+            "scenario", "round_num", "query", "ticket", "ticket_id",
+            "issue_type", "key_entities", "collected_data",
+        },
+        "fact_domains": {"order", "settlement"},
+    },
+    "OperationAgent": {
+        "fields": {
+            "scenario", "round_num", "query", "ticket", "ticket_id",
+            "issue_type", "key_entities", "collected_data",
+        },
+        "fact_domains": {"order", "merchant", "knowledge"},
+    },
+    "DataAgent": {
+        "fields": {
+            "scenario", "round_num", "query", "ticket", "ticket_id",
+            "issue_type", "key_entities", "collected_data",
+        },
+        "fact_domains": {"order", "asset", "settlement"},
+    },
+    "ResolutionAgent": {
+        "fields": None,
+        "fact_domains": None,
+    },
+}
+
+
 class Scheduler:
     """确定性调度器 - 依据策略矩阵协调多个子智能体。"""
 
@@ -151,6 +209,35 @@ class Scheduler:
             context["user_preferences"] = preferences
 
         return context
+
+    def _build_role_context(
+        self, agent_name: str, context: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """按 Agent 角色裁剪上下文（Role-aware Context）。
+
+        - 字段白名单：执行侧 Agent 剔除意图/记忆/调度等无关字段；
+        - 事实域过滤：collected_data.facts 只保留实体 key 与该角色关注域的事实。
+        未在画像中的 Agent（如 RAGKnowledgeAgent）保留全量上下文。
+        """
+        profile = _AGENT_CONTEXT_PROFILE.get(agent_name)
+        if profile is None or profile.get("fields") is None:
+            return context
+
+        role_context = {
+            key: context[key] for key in profile["fields"] if key in context
+        }
+
+        fact_domains = profile.get("fact_domains")
+        if fact_domains:
+            collected = role_context.get("collected_data") or {}
+            facts = dict(collected.get("facts") or {})
+            allowed = set(_ENTITY_FACT_KEYS)
+            for domain in fact_domains:
+                allowed |= _FACTS_DOMAINS.get(domain, set())
+            filtered_facts = {k: v for k, v in facts.items() if k in allowed}
+            role_context["collected_data"] = {**collected, "facts": filtered_facts}
+
+        return role_context
 
     async def _execute_parallel_agents(
         self,
@@ -341,10 +428,12 @@ class Scheduler:
             return {"status": "error", "message": f"智能体未注册: {agent_name}"}
 
         agent = self.agent_registry[agent_name]
+        # Role-aware Context：按角色裁剪上下文后再注入给该 Agent
+        role_context = self._build_role_context(agent_name, context)
         input_msg = Msg(
             name="Scheduler",
             content=json.dumps({
-                "context": context,
+                "context": role_context,
                 "reason": reason,
                 "expected_output": expected_output,
                 "previous_results": previous_results,

@@ -51,6 +51,10 @@ class SystemSettings(BaseSettings):
     )
 
     enable_llm: bool = Field(default=True, description="是否启用 LLM")
+    enable_llm_autonomy: bool = Field(
+        default=False,
+        description="是否启用专业 Agent 的 LLM 自主决策（ReAct/Plan-and-Execute）。默认关闭以保持确定性；需真实 LLM API 与真实数据支撑",
+    )
     log_level: str = Field(default="INFO", description="日志级别")
     max_retries: int = Field(default=3, ge=0)
     timeout: int = Field(default=60, gt=0)

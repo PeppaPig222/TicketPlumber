@@ -31,6 +31,10 @@ class AgentResult(BaseModel):
     next_actions: List[str] = Field(default_factory=list)
     recommended_skills: List[str] = Field(default_factory=list)
     tools_called: List[str] = Field(default_factory=list)
+    # 结构化发现：关键事实，比 evidence 更结构化（可空，各 Agent 按需填充）
+    findings: List[str] = Field(default_factory=list)
+    # 证据覆盖率（启发式，非模型置信度）：有工具调用时=证据条数/工具数，无工具调用时=有无证据
+    evidence_coverage: Optional[float] = None
     # 单一降级信号：status 为失败态时自动置 True，下游无需再枚举多套状态值
     degraded: bool = False
     # 结构化不一致信号：替代对 summary 做 "不一致" 字符串包含判断
@@ -71,6 +75,8 @@ class DiagnosisState(BaseModel):
         "next_actions",
         "error",
         "degraded",
+        "evidence_coverage",
+        "findings",
     }
 
     def to_intention_collected_data(self) -> Dict[str, Any]:

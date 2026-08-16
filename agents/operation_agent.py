@@ -9,7 +9,6 @@ from agentscope.message import Msg
 
 from agents.diagnosis_agent_base import BaseDiagnosisAgent
 from agents.diagnosis_agents import _context_value
-from utils.tool_registry import tool_registry
 
 
 class OperationAgent(BaseDiagnosisAgent):
@@ -25,6 +24,12 @@ class OperationAgent(BaseDiagnosisAgent):
         "GetMerchantCoopStatus",
         "GetProtectionPeriod",
         "GetAssetRecycle",
+    }
+
+    # 工具白名单（执行层物理隔离）：只允许操作侧排查工具
+    allowed_tools = {
+        "query_order",
+        "query_asset",
     }
 
     async def reply(self, x: Msg = None) -> Msg:
@@ -76,7 +81,7 @@ class OperationAgent(BaseDiagnosisAgent):
 
     async def _order_round_two(self, context: Dict) -> Msg:
         order_id = _context_value(context, "order_id")
-        order_result = await tool_registry.execute("query_order", order_id=order_id)
+        order_result = await self._execute_tool("query_order", order_id=order_id)
         order = order_result.get("data", {}) if order_result.get("status") == "success" else {}
         refund_steps = [item for item in order.get("timeline", []) if "退款" in item.get("event", "")]
         summary = "用户操作流程符合规范"
@@ -99,7 +104,7 @@ class OperationAgent(BaseDiagnosisAgent):
 
     async def _asset_round_two(self, context: Dict) -> Msg:
         merchant_id = _context_value(context, "merchant_id")
-        asset_result = await tool_registry.execute("query_asset", merchant_id=merchant_id)
+        asset_result = await self._execute_tool("query_asset", merchant_id=merchant_id)
         asset = asset_result.get("data", {}) if asset_result.get("status") == "success" else {}
         protection = asset.get("protection_period", {})
         binding = asset.get("user_binding", {})
