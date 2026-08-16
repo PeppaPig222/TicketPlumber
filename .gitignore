@@ -55,6 +55,9 @@ frontend/dist/
 # Logs
 *.log
 
+# 环境变量（含 LLM API Key 等敏感信息，不提交）
+.env
+
 # OS
 .DS_Store
 Thumbs.db

@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 from typing import Any, Dict, Iterable, List, Optional
@@ -128,22 +129,67 @@ class BaseDiagnosisAgent(AgentBase):
 
         无 model（或调用失败）时返回 None，调用方降级到确定性规则路径，
         保证「规则优先 + LLM 兜底」的分层治理，不破坏可复现性。
+
+        兼容多种返回形态：str / dict / Msg / agentscope ChatResponse / 异步生成器。
         """
         if self.model is None:
             return None
         try:
             response = await self.model(messages)
-            if isinstance(response, str):
-                return response
-            if isinstance(response, dict):
-                return response.get("content") or response.get("text")
-            content = getattr(response, "content", None)
-            return content if content is not None else str(response)
+            return await self._collect_llm_text(response)
         except Exception as e:
             logger.warning(
                 "LLM call failed", extra={"agent": self.name, "error": str(e)}
             )
             return None
+
+    @classmethod
+    async def _collect_llm_text(cls, response: Any) -> Optional[str]:
+        """从 LLM 返回值中提取纯文本，统一流式与非流式形态。"""
+        if response is None:
+            return None
+        # 流式：异步生成器（agentscope OpenAIChatModel 默认 stream=True）
+        if inspect.isasyncgen(response):
+            parts = []
+            async for chunk in response:
+                text = cls._text_from_response(chunk)
+                if text:
+                    parts.append(text)
+            return "".join(parts) or None
+        return cls._text_from_response(response) or None
+
+    @classmethod
+    def _text_from_response(cls, response: Any) -> str:
+        """从单个 LLM 响应对象提取文本内容。"""
+        if isinstance(response, str):
+            return response
+        # Msg / ChatResponse / dict 等均有 content 字段；dict-like 对象优先按 dict 取
+        content = (
+            response.get("content")
+            if isinstance(response, dict)
+            else getattr(response, "content", None)
+        )
+        if isinstance(content, str):
+            return content
+        if isinstance(content, (list, tuple)):
+            return cls._text_from_blocks(content)
+        if isinstance(content, dict):
+            return content.get("text") or content.get("content") or ""
+        if isinstance(response, dict):
+            return response.get("text") or ""
+        return str(content) if content is not None else ""
+
+    @staticmethod
+    def _text_from_blocks(blocks: Iterable[Any]) -> str:
+        """从 agentscope ChatResponse.content（TextBlock 列表）提取拼接文本。"""
+        parts = []
+        for block in blocks:
+            if isinstance(block, dict):
+                if block.get("type") == "text":
+                    parts.append(block.get("text", "") or "")
+            elif getattr(block, "type", None) == "text":
+                parts.append(getattr(block, "text", "") or "")
+        return "".join(parts)
 
     def _response(
         self,

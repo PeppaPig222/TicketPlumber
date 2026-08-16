@@ -2,13 +2,22 @@
 # -*- coding: utf-8 -*-
 """
 CodeAgent：负责接口链路、配置与代码侧排查。
+
+除确定性链路排查外，提供「日志异常模式驱动的 LLM 动态决策」能力：
+当回调日志呈现多异常模式（歧义）且 enable_llm_autonomy 开启时，调用 LLM
+基于日志异常决定深挖哪条链路（ReAct-lite 单步），否则退回确定性规则路径。
 """
-from typing import Dict, List
+import json
+import logging
+from typing import Dict, List, Optional
 
 from agentscope.message import Msg
 
+from config import SYSTEM_CONFIG
 from agents.diagnosis_agent_base import BaseDiagnosisAgent
 from agents.diagnosis_agents import _context_value
+
+logger = logging.getLogger(__name__)
 
 
 class CodeAgent(BaseDiagnosisAgent):
@@ -98,19 +107,131 @@ class CodeAgent(BaseDiagnosisAgent):
             "退款功能开关开启" if config_data.get("refund_enabled") else "退款开关异常",
         ]
         verdict = "代码链路无明显异常" if has_success and config_data.get("refund_enabled") else "代码链路存在可疑点"
+        tools_called = ["trace_api", "check_config"]
+        code_path_detail = {"logs": log_items, "config": config_data}
+
+        # 阶段3：LLM 动态决策（ReAct-lite 单步）——仅当日志多异常且开关开启时触发
+        llm_decision = None
+        if self._autonomy_enabled() and self._is_ambiguous(log_items):
+            llm_decision = await self._llm_deep_dive(context, log_items, config_data)
+
+        if llm_decision:
+            action = llm_decision.get("decision")
+            if action == "trace_deeper":
+                deep_path = llm_decision.get("api_path") or "/api/order/sync"
+                deep = await self._execute_tool("trace_api", api_path=deep_path, order_id=order_id)
+                deep_items = deep.get("data", [])
+                evidence.append(f"LLM 深挖 {deep_path}：命中 {len(deep_items)} 条日志")
+                tools_called.append("trace_api")
+                code_path_detail["deep_logs"] = deep_items
+            elif action == "config_check":
+                config_key = llm_decision.get("config_key")
+                deep = await self._execute_tool("check_config", merchant_id=merchant_id, config_key=config_key)
+                evidence.append(f"LLM 深挖配置项 {config_key or '(默认)'}：{deep.get('status')}")
+                tools_called.append("check_config")
+                code_path_detail["deep_config"] = deep.get("data", {})
+            if llm_decision.get("root_cause"):
+                verdict = llm_decision["root_cause"]
+                evidence.append(f"LLM 判定根因：{verdict}")
+            code_path_detail["llm_decision"] = llm_decision
+            code_path_detail["llm_autonomy"] = True
+
         return self._response(
             status="success",
             summary=verdict,
             evidence=evidence,
             next_actions=["交由数据侧继续做一致性校验"],
             recommended_skills=["trace_api", "check_config"],
-            tools_called=["trace_api", "check_config"],
-            code_path_detail={
-                "logs": log_items,
-                "config": config_data,
-            },
+            tools_called=tools_called,
+            code_path_detail=code_path_detail,
             path_verdict=verdict,
         )
+
+    def _autonomy_enabled(self) -> bool:
+        """LLM 自主决策是否可用：配置开关开启 且 已注入 LLM 模型。
+
+        测试/降级场景下 model 为 None，直接短路为确定性路径。
+        """
+        return bool(SYSTEM_CONFIG.get("enable_llm_autonomy", False)) and self.model is not None
+
+    @staticmethod
+    def _is_ambiguous(log_items: List[Dict]) -> bool:
+        """判定日志是否呈现多异常模式（歧义），作为 LLM 深挖的触发条件。
+
+        信号：存在多种不同 error_code，或同时出现 2xx 与 4xx/5xx 状态码。
+        """
+        if not log_items:
+            return False
+        error_codes = {item.get("error_code") for item in log_items if item.get("error_code")}
+        statuses = {item.get("status_code") for item in log_items if item.get("status_code") is not None}
+        if len(error_codes) > 1:
+            return True
+        has_success = any(200 <= s < 300 for s in statuses)
+        has_failure = any(s >= 400 for s in statuses)
+        return has_success and has_failure
+
+    def _plan_prompt(self, context: Dict, log_items: List[Dict], config_data: Dict) -> str:
+        """构造深挖决策 prompt：给出日志异常模式与候选链路，要求输出 JSON。"""
+        order_id = _context_value(context, "order_id")
+        logs_summary = "\n".join(
+            f"- {item.get('api_path')} status={item.get('status_code')} "
+            f"error={item.get('error_code') or '无'} rt={item.get('response_time_ms')}ms "
+            f"note={item.get('note', '')}"
+            for item in log_items
+        )
+        return (
+            "你是工单诊断的代码链路排查 Agent。当前退款回调日志呈现多异常模式，"
+            "需要你基于日志异常决定「深挖哪条链路」，只做单步决策。\n\n"
+            f"订单号：{order_id}\n"
+            f"配置摘要：{json.dumps(config_data, ensure_ascii=False)}\n"
+            f"日志：\n{logs_summary}\n\n"
+            "可选决策（decision 字段三选一）：\n"
+            "1. trace_deeper：继续追踪其他接口日志（api_path 候选 /api/order/sync 或 /api/refund/query）\n"
+            "2. config_check：检查某个配置项（config_key 可选）\n"
+            "3. conclude：证据已足够，直接给出根因（root_cause）\n\n"
+            "只输出 JSON，不要输出其他内容，格式：\n"
+            '{"decision": "trace_deeper|config_check|conclude", "api_path": "...", '
+            '"config_key": "...", "root_cause": "...", "reason": "..."}'
+        )
+
+    @staticmethod
+    def _parse_decision(raw: str) -> Optional[Dict]:
+        """解析 LLM 返回的 JSON 决策，容错处理 markdown code fence 与前后缀。"""
+        if not raw:
+            return None
+        text = raw.strip()
+        if text.startswith("```"):
+            text = text.strip("`")
+            if text.lower().startswith("json"):
+                text = text[4:]
+            text = text.strip()
+        start = text.find("{")
+        end = text.rfind("}")
+        if start == -1 or end == -1 or end <= start:
+            return None
+        try:
+            data = json.loads(text[start:end + 1])
+            if isinstance(data, dict) and "decision" in data:
+                return data
+        except (json.JSONDecodeError, ValueError):
+            return None
+        return None
+
+    async def _llm_deep_dive(
+        self, context: Dict, log_items: List[Dict], config_data: Dict
+    ) -> Optional[Dict]:
+        """调用 LLM 基于日志异常模式做单步深挖决策，失败返回 None 退回规则路径。"""
+        prompt = self._plan_prompt(context, log_items, config_data)
+        raw = await self._call_llm([{"role": "user", "content": prompt}])
+        if not raw:
+            return None
+        decision = self._parse_decision(raw)
+        if decision is None:
+            logger.warning(
+                "LLM deep dive decision parse failed",
+                extra={"agent": self.name, "raw": raw[:200]},
+            )
+        return decision
 
     async def _asset_round_two(self, context: Dict) -> Msg:
         merchant_id = _context_value(context, "merchant_id")

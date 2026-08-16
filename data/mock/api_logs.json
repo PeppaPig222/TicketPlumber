@@ -18,5 +18,35 @@
     "response_body": {"code": 505, "message": "timeout"},
     "called_at": "2026-08-13T14:32:23",
     "note": "支付回调超时，订单状态同步失败"
+  },
+  {
+    "api_path": "/api/order/sync",
+    "order_id": "ORD-8823",
+    "status_code": 200,
+    "response_time_ms": 180,
+    "error_code": null,
+    "response_body": {"code": 0, "message": "success"},
+    "called_at": "2026-08-13T14:32:25",
+    "note": "订单状态同步接口返回成功"
+  },
+  {
+    "api_path": "/api/order/sync",
+    "order_id": "ORD-8823",
+    "status_code": 500,
+    "response_time_ms": 3200,
+    "error_code": "SYNC_002",
+    "response_body": {"code": 500, "message": "internal error"},
+    "called_at": "2026-08-13T14:32:27",
+    "note": "订单状态同步内部异常，退款状态与订单状态不一致"
+  },
+  {
+    "api_path": "/api/refund/query",
+    "order_id": "ORD-8823",
+    "status_code": 200,
+    "response_time_ms": 150,
+    "error_code": null,
+    "response_body": {"code": 0, "message": "success", "refund_status": "processing"},
+    "called_at": "2026-08-13T14:32:30",
+    "note": "退款查询返回处理中状态"
   }
 ]

@@ -15,6 +15,8 @@ import psutil
 
 from agentscope.message import Msg
 
+from config import settings
+
 logger = logging.getLogger(__name__)
 
 from agents.diagnosis_intention_agent import DiagnosisIntentionAgent
@@ -78,6 +80,43 @@ class DiagnosisService:
         self.long_term_memory = LongTermMemory(user_id=user_id, storage_path=storage_path)
         # RAG Agent：外部注入优先，否则尝试懒加载
         self.rag_agent = rag_agent or self._load_rag_agent()
+        # 专业 Agent 局部自主决策共享的 LLM 模型（开关关闭时为 None，保持确定性）
+        self.llm_model = self._build_llm_model()
+
+    @staticmethod
+    def _build_llm_model():
+        """按 enable_llm_autonomy 开关构建共享 LLM 模型。
+
+        开关关闭、缺少有效 api_key 或初始化失败时返回 None，专业 Agent 退回
+        确定性规则路径，保证「规则优先 + LLM 兜底」不破坏可复现性。
+        """
+        if not settings.system.enable_llm_autonomy:
+            return None
+        api_key = settings.llm.api_key
+        if not api_key or api_key in {"API_KEY", "your_api_key_here"}:
+            return None
+        try:
+            from agentscope.model import OpenAIChatModel
+
+            return OpenAIChatModel(
+                model_name=settings.llm.model_name,
+                api_key=api_key,
+                stream=False,
+                client_kwargs={
+                    "base_url": settings.llm.base_url,
+                    "timeout": settings.system.timeout,
+                },
+                generate_kwargs={
+                    "temperature": settings.llm.temperature,
+                    "max_tokens": settings.llm.max_tokens,
+                },
+            )
+        except Exception as e:
+            logger.warning(
+                "LLM model init failed, fallback to deterministic",
+                extra={"error": str(e)},
+            )
+            return None
 
     async def diagnose(
         self,
@@ -169,7 +208,7 @@ class DiagnosisService:
             custom_factories["RAGKnowledgeAgent"] = lambda: self.rag_agent
 
         agent_registry = LazyAgentRegistry(
-            model=None,
+            model=self.llm_model,
             cache={},
             memory_manager=memory_manager,
             agent_kwargs={
