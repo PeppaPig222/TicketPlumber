@@ -149,3 +149,14 @@ async def test_code_agent_follow_up_verifies_api_trace_hypothesis():
     assert resolved["status"] in {"verified", "refuted"}
     assert resolved["type"] == "api_trace"
     assert resolved["verified_by"] == "CodeAgent"
+
+
+@pytest.mark.asyncio
+async def test_execute_tool_budget_exceeded():
+    agent = CodeAgent(name="CodeAgent")
+    agent.max_steps = 2
+    await agent._execute_tool("trace_api", api_path="/api/refund/callback", order_id="ORD-8823")
+    await agent._execute_tool("check_config", merchant_id="2037")
+    result = await agent._execute_tool("trace_api", api_path="/api/refund/callback", order_id="ORD-8823")
+    assert result["status"] == "error"
+    assert result["error_code"] == "STEP_BUDGET_EXCEEDED"

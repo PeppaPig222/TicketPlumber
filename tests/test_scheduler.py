@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+import asyncio
 import os
 import sys
 
 import pytest
+from agentscope.message import Msg
 
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
@@ -14,6 +16,7 @@ from agents.lazy_agent_registry import LazyAgentRegistry
 from agents.operation_agent import OperationAgent
 from agents.resolution_agent import ResolutionAgent
 from agents.scheduler import Scheduler
+from agents.scheduling import AgentTask
 from skills.registry import SkillRegistry
 
 
@@ -60,3 +63,39 @@ async def test_scheduler_uses_lazy_registry_with_professional_agents():
     agent_names = [item["agent_name"] for item in payload["results"]]
     assert agent_names == ["CodeAgent", "OperationAgent", "DataAgent", "ResolutionAgent"]
     assert payload["results"][-1]["data"]["responsible_party"] == "数据侧（后台脚本）"
+
+
+def test_filter_by_permissions_drops_unauthorized():
+    tasks = [
+        AgentTask(agent_name="CodeAgent", priority=1, reason="r", expected_output="o"),
+        AgentTask(agent_name="ResolutionAgent", priority=1, reason="r", expected_output="o"),
+    ]
+    filtered_r1 = Scheduler._filter_by_permissions(tasks, round_num=1)
+    assert [t.agent_name for t in filtered_r1] == ["CodeAgent"]
+
+    filtered_r3 = Scheduler._filter_by_permissions(tasks, round_num=3)
+    assert [t.agent_name for t in filtered_r3] == ["CodeAgent", "ResolutionAgent"]
+
+
+class _SlowAgent:
+    def __init__(self, name: str):
+        self.name = name
+
+    async def reply(self, x):
+        await asyncio.sleep(1)
+        return Msg(name=self.name, content='{"status": "success"}', role="assistant")
+
+
+@pytest.mark.asyncio
+async def test_agent_timeout_marks_degraded():
+    scheduler = Scheduler(agent_registry={"SlowAgent": _SlowAgent("SlowAgent")})
+    scheduler.agent_timeout_sec = 0.05
+    result = await scheduler._execute_agent(
+        agent_name="SlowAgent",
+        context={},
+        reason="",
+        expected_output="",
+        previous_results=[],
+    )
+    assert result["status"] == "timeout"
+    assert result["degraded"] is True

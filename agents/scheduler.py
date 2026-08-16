@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional
 from agentscope.message import Msg
 
 from agents.scheduling import SchedulingContext, StrategyMatrix
+from config import SCHEDULING_CONFIG
 
 logger = logging.getLogger(__name__)
 
@@ -84,6 +85,14 @@ _AGENT_CONTEXT_PROFILE = {
     },
 }
 
+# Scheduler 权限收口：显式声明「哪些专业 Agent 在哪些轮次可被调度」。
+# 策略矩阵与假设路由追加的候选 Agent 都必须命中此白名单，否则被过滤（防越权调度）。
+_ROUND_AGENT_PERMISSIONS: Dict[int, set] = {
+    1: {"CodeAgent", "OperationAgent", "DataAgent"},
+    2: {"CodeAgent", "OperationAgent", "DataAgent"},
+    3: {"CodeAgent", "OperationAgent", "DataAgent", "ResolutionAgent"},
+}
+
 
 class Scheduler:
     """确定性调度器 - 依据策略矩阵协调多个子智能体。"""
@@ -101,6 +110,8 @@ class Scheduler:
         self.memory_manager = memory_manager
         self.strategy_matrix = strategy_matrix or StrategyMatrix()
         self.rag_available = rag_available
+        # per-agent 单轮执行超时（timeout 治理）：超时标记 degraded
+        self.agent_timeout_sec = float(SCHEDULING_CONFIG.get("agent_timeout_sec", 30.0))
 
     def register_agent(self, agent_name: str, agent):
         """注册子智能体。"""
@@ -116,6 +127,7 @@ class Scheduler:
     async def run(self, intention_data: Dict[str, Any]) -> Dict[str, Any]:
         """执行一轮调度，返回 round_result dict。"""
         tasks, schedule_metadata = self._build_schedule(intention_data)
+        tasks = self._filter_by_permissions(tasks, intention_data.get("round_num", 1))
         agent_schedule = [t.to_dict() for t in tasks]
 
         # 把本类生成的 schedule/metadata 透传，供子 Agent 与记忆读取
@@ -190,6 +202,25 @@ class Scheduler:
             rag_available=self.rag_available,
         )
         return self.strategy_matrix.build(ctx)
+
+    @staticmethod
+    def _filter_by_permissions(tasks, round_num: int):
+        """权限收口：过滤掉当前轮次无权调度的 Agent。
+
+        策略矩阵/假设路由产出的候选 Agent 都需命中 _ROUND_AGENT_PERMISSIONS 白名单，
+        未命中的被丢弃并记录，防止越权调度（防新 Agent 或路由规则误接入）。
+        """
+        allowed = _ROUND_AGENT_PERMISSIONS.get(round_num)
+        if not allowed:
+            return tasks
+        filtered = [t for t in tasks if t.agent_name in allowed]
+        dropped = [t.agent_name for t in tasks if t.agent_name not in allowed]
+        if dropped:
+            logger.warning(
+                "Filtered unauthorized agents",
+                extra={"round_num": round_num, "dropped_agents": dropped},
+            )
+        return filtered
 
     def _prepare_context(self, intention_data: Dict[str, Any]) -> Dict[str, Any]:
         """准备子智能体使用的上下文。"""
@@ -455,7 +486,10 @@ class Scheduler:
         )
 
         try:
-            response = await agent.reply(input_msg)
+            response = await asyncio.wait_for(
+                agent.reply(input_msg),
+                timeout=self.agent_timeout_sec,
+            )
             if isinstance(response.content, str):
                 try:
                     result = json.loads(response.content)
@@ -473,6 +507,18 @@ class Scheduler:
                 }
 
             return {"status": "success", "agent_name": agent_name, "data": result}
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Agent execution timed out",
+                extra={"agent_name": agent_name, "timeout_sec": self.agent_timeout_sec},
+            )
+            return {
+                "status": "timeout",
+                "agent_name": agent_name,
+                "data": {"timeout_sec": self.agent_timeout_sec},
+                "degraded": True,
+                "message": f"智能体执行超时（>{self.agent_timeout_sec}s）",
+            }
         except Exception as e:
             logger.error(
                 "Agent execution failed",
@@ -515,15 +561,23 @@ class Scheduler:
                 "recommended_skills": data.get("recommended_skills", []),
                 "evidence": data.get("evidence", []),
                 "next_actions": data.get("next_actions", []),
+                "degraded": bool(result["result"].get("degraded")),
             })
 
         errors = [r for r in results if r["result"].get("status") == "error"]
         skipped = [r for r in results if r["result"].get("status") == "skipped"]
-        if errors:
+        degraded = [
+            r for r in results
+            if r["result"].get("status") == "timeout" or r["result"].get("degraded")
+        ]
+        if errors or degraded:
             aggregated["status"] = "partial_failure"
+        if errors:
             aggregated["errors"] = len(errors)
         if skipped:
             aggregated["skipped"] = len(skipped)
+        if degraded:
+            aggregated["degraded"] = len(degraded)
 
         return aggregated
 

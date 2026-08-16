@@ -249,6 +249,11 @@ class SchedulingSettings(BaseSettings):
         default=False,
         description="是否启用假设驱动路由（扫描黑板 pending hypothesis，merge 去重追加候选 Agent）",
     )
+    agent_timeout_sec: float = Field(
+        default=30.0,
+        gt=0,
+        description="单 Agent 单轮执行超时（秒），超时标记 degraded",
+    )
     enable_basic_info_parallel: bool = Field(
         default=True,
         description="基础信息查询统一并行策略",

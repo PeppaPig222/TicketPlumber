@@ -47,8 +47,12 @@ class BaseDiagnosisAgent(AgentBase):
         self.skill_registry = skill_registry or SkillRegistry()
         self.memory_manager = memory_manager
         self.rag_agent = rag_agent
+        # 单轮工具步数计数（budget 治理）：在 _execute_tool 上累加，_parse_payload 处重置
+        self._tool_steps = 0
 
     def _parse_payload(self, msg: Optional[Msg]) -> Dict[str, Any]:
+        # 新一轮开始，重置工具步数预算（budget 计数）
+        self._tool_steps = 0
         if not msg or not getattr(msg, "content", None):
             return {}
         if isinstance(msg.content, dict):
@@ -124,6 +128,7 @@ class BaseDiagnosisAgent(AgentBase):
 
         与 _run_skill 的 Skill 白名单对应，这里是 Tool 白名单：
         越界调用返回 error 并记录，形成物理隔离（防 LLM 自主越权）。
+        同时累计步数预算（budget），超出 max_steps 截断，防 ReAct 无限深挖。
         """
         if self.allowed_tools and tool_name not in self.allowed_tools:
             logger.warning(
@@ -137,6 +142,21 @@ class BaseDiagnosisAgent(AgentBase):
                 "message": f"{self.name} 不允许调用工具 {tool_name}",
                 "data": {},
             }
+
+        self._tool_steps += 1
+        if self._tool_steps > self.max_steps:
+            logger.warning(
+                "Step budget exhausted",
+                extra={"agent": self.name, "steps": self._tool_steps, "max_steps": self.max_steps},
+            )
+            return {
+                "status": "error",
+                "tool": tool_name,
+                "error_code": "STEP_BUDGET_EXCEEDED",
+                "message": f"超出单 Agent 最大探索步数 {self.max_steps}",
+                "data": {},
+            }
+
         return await tool_registry.execute(tool_name, **kwargs)
 
     @staticmethod
