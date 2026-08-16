@@ -503,17 +503,19 @@ def main():
         print(f"数据集不存在: {args.dataset}")
         sys.exit(1)
 
-    from config import SYSTEM_CONFIG
+    from config import SCHEDULING_CONFIG, SYSTEM_CONFIG
 
     llm_model = None
     if args.llm_autonomy:
         SYSTEM_CONFIG["enable_llm_autonomy"] = True
+        SCHEDULING_CONFIG["enable_hypothesis_routing"] = True
         llm_model = MockLLM()
-        print("已开启 LLM 自主（注入 mock LLM），enable_llm_autonomy=true")
+        print("已开启 LLM 自主 + 假设路由（注入 mock LLM），enable_llm_autonomy=true, enable_hypothesis_routing=true")
     else:
-        # 双态回归的基准态：显式关闭 LLM 自主，保证走确定性规则路径（不受 .env 影响）
+        # 双态回归的基准态：显式关闭 LLM 自主与假设路由，保证走确定性规则路径（不受 .env 影响）
         SYSTEM_CONFIG["enable_llm_autonomy"] = False
-        print("已关闭 LLM 自主（确定性规则路径），enable_llm_autonomy=false")
+        SCHEDULING_CONFIG["enable_hypothesis_routing"] = False
+        print("已关闭 LLM 自主与假设路由（确定性规则路径），enable_llm_autonomy=false, enable_hypothesis_routing=false")
 
     report = asyncio.run(run_evaluation(args.dataset, llm_model=llm_model))
     print_report(report)

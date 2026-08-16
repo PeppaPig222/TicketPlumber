@@ -222,6 +222,46 @@ class ResolutionAgent(BaseDiagnosisAgent):
             code_detail = collected_facts.get("code_path_detail") or {}
         return (code_detail.get("llm_decision") or {}).get("root_cause")
 
+    # 假设证据维度 → 根因提取优先级（越靠前越作为主因根因）
+    _HYPOTHESIS_ROOT_CAUSE_PRIORITY = (
+        "api_trace", "config_state", "db_state", "policy", "biz_flow", "cross_verify",
+    )
+
+    def _verified_hypotheses(self, previous_results: List[Dict]) -> List[Dict]:
+        """从 follow_up 结果读取已验证假设（status == verified）。
+
+        Round 3 内 follow_up 验证假设后经 hypotheses 字段写回，此时尚未 merge
+        进 facts（merge 发生在整轮结束后），故归因层从 previous_results 读取。
+        """
+        verified: List[Dict] = []
+        for agent_name in ("CodeAgent", "DataAgent", "OperationAgent"):
+            data = self._find_previous_result(previous_results, agent_name)
+            for hyp in data.get("hypotheses") or []:
+                if (
+                    isinstance(hyp, dict)
+                    and hyp.get("status") == "verified"
+                    and hyp.get("detail")
+                ):
+                    verified.append(hyp)
+        return verified
+
+    def _hypothesis_root_cause(self, previous_results: List[Dict]) -> Optional[str]:
+        """从已验证假设中按证据维度优先级提取主因根因。
+
+        尊重验证结果：refuted 假设不参与；无已验证假设时返回 None 交由规则路径。
+        """
+        verified = self._verified_hypotheses(previous_results)
+        if not verified:
+            return None
+        by_type: Dict[str, Dict] = {}
+        for hyp in verified:
+            by_type.setdefault(hyp.get("type"), hyp)
+        for hyp_type in self._HYPOTHESIS_ROOT_CAUSE_PRIORITY:
+            hyp = by_type.get(hyp_type)
+            if hyp and hyp.get("detail"):
+                return hyp["detail"]
+        return verified[0].get("detail")
+
     async def _resolve_order(self, context: Dict, previous_results: List[Dict]) -> Msg:
         history_result = await self._run_skill(
             "search_history_ticket",
@@ -266,7 +306,8 @@ class ResolutionAgent(BaseDiagnosisAgent):
             responsible_party_matrix=self._build_responsibility_matrix(
                 scenario, previous_results
             ),
-            root_cause=self._llm_root_cause(code, context)
+            root_cause=self._hypothesis_root_cause(previous_results)
+            or self._llm_root_cause(code, context)
             or "退款回调后订单状态同步任务超时，导致订单状态未更新。",
             recommendations=[
                 "手动修复 ORD-8823 的订单状态",
@@ -368,7 +409,8 @@ class ResolutionAgent(BaseDiagnosisAgent):
             responsible_party_matrix=self._build_responsibility_matrix(
                 scenario, previous_results
             ),
-            root_cause="商户结算标签被脚本误刷，导致按错误分润比例结算。",
+            root_cause=self._hypothesis_root_cause(previous_results)
+            or "商户结算标签被脚本误刷，导致按错误分润比例结算。",
             recommendations=[
                 "修正商户结算标签与规则",
                 "重新核算账期并补发或冲正差额",
