@@ -119,3 +119,33 @@ async def test_llm_deep_dive_parses_llm_decision():
     assert decision is not None
     assert decision["decision"] == "trace_deeper"
     assert decision["api_path"] == "/api/order/sync"
+
+
+@pytest.mark.asyncio
+async def test_code_agent_follow_up_verifies_api_trace_hypothesis():
+    agent = CodeAgent(name="CodeAgent")
+    pending = {
+        "type": "api_trace",
+        "detail": "支付回调超时导致状态同步失败",
+        "status": "pending",
+        "proposed_by": "CodeAgent",
+        "evidence": ["LLM 判定根因：支付回调超时"],
+    }
+    context = {
+        "scenario": "order_status_anomaly",
+        "round_num": 3,
+        "order_id": "ORD-8823",
+        "merchant_id": "2037",
+        "collected_data": {"facts": {"pending_hypotheses": [pending]}},
+    }
+
+    result = await agent._follow_up("order_status_anomaly", context)
+    data = json.loads(result.content)
+
+    assert data["status"] == "success"
+    assert data["tools_called"]
+    assert data["hypotheses"]
+    resolved = data["hypotheses"][0]
+    assert resolved["status"] in {"verified", "refuted"}
+    assert resolved["type"] == "api_trace"
+    assert resolved["verified_by"] == "CodeAgent"

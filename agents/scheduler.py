@@ -52,7 +52,7 @@ _FACTS_DOMAINS = {
 _ENTITY_FACT_KEYS = {"ticket_id", "order_id", "merchant_id", "issue_type", "scenario"}
 
 # 协作字段：跨 Agent 全局可读，不参与 fact_domains 裁剪（假设路由/验证依赖它们）
-_COLLABORATION_FACT_KEYS = {"hypotheses", "pending_hypotheses"}
+_COLLABORATION_FACT_KEYS = {"hypotheses", "pending_hypotheses", "inconsistency_found"}
 
 # 各专业 Agent 的上下文画像：字段白名单 + 关注的事实域
 # fields=None 表示保留全量（结论侧需要 rewritten_query / 记忆上下文做 RAG）

@@ -58,7 +58,7 @@ class CodeAgent(BaseDiagnosisAgent):
         if scenario == "settlement_amount_mismatch":
             return await self._settlement_round_two(context)
         if round_num >= 3:
-            return await self._follow_up(scenario, previous_results)
+            return await self._follow_up(scenario, context)
         return await self._order_round_two(context)
 
     async def _round_one(self, context: Dict, scenario: str, previous_results: List[Dict]) -> Msg:
@@ -269,21 +269,51 @@ class CodeAgent(BaseDiagnosisAgent):
             inconsistency_found=bool(inconsistent),
         )
 
-    async def _follow_up(self, scenario: str, previous_results: List[Dict]) -> Msg:
-        data_result = self._find_previous_result(previous_results, "DataAgent")
-        code_result = self._find_previous_result(previous_results, "CodeAgent")
-        evidence = list(code_result.get("evidence", []))
-        if data_result.get("path_verdict"):
-            evidence.append(f"数据侧补充结论：{data_result.get('path_verdict')}")
+    async def _follow_up(self, scenario: str, context: Dict) -> Msg:
+        # 只验证本 Agent 能力范围内的 api_trace / config_state 假设（路由映射 = 验证能力映射）
+        code_hypotheses = [
+            h for h in self._pending_hypotheses(context)
+            if h.get("type") in {"api_trace", "config_state"}
+        ]
+
         summary = "代码侧复核后维持原判断，继续交由 ResolutionAgent 汇总"
         if scenario == "settlement_amount_mismatch":
             summary = "代码侧复核结算链路后，确认问题更偏向规则或数据标签"
+
+        resolved = []
+        tools_called: List[str] = []
+        evidence: List[str] = []
+
+        if code_hypotheses:
+            order_id = _context_value(context, "order_id")
+            merchant_id = _context_value(context, "merchant_id")
+            logs = await self._execute_tool("trace_api", api_path="/api/refund/callback", order_id=order_id)
+            config = await self._execute_tool("check_config", merchant_id=merchant_id)
+            tools_called = ["trace_api", "check_config"]
+            log_items = logs.get("data", [])
+            config_data = config.get("data", {})
+            has_timeout = any(item.get("status_code") == 505 for item in log_items)
+            has_error = any(item.get("error_code") for item in log_items)
+            refund_enabled = bool(config_data.get("refund_enabled"))
+
+            for hyp in code_hypotheses:
+                if hyp.get("type") == "api_trace":
+                    ok = bool(has_timeout or has_error)
+                    msg = f"验证假设[{hyp.get('detail')}]：链路异常 {'仍存在' if ok else '已消失'}"
+                else:
+                    ok = not refund_enabled
+                    msg = f"验证假设[{hyp.get('detail')}]：配置异常 {'仍存在' if ok else '已恢复'}"
+                evidence.append(msg)
+                resolved.append(self._resolved_hypothesis(hyp, ok, [msg]))
+            summary = "代码侧复核后确认链路存在异常" if (has_timeout or has_error) else "代码侧复核后链路未见新增异常"
+
         return self._response(
             status="success",
             summary=summary,
-            evidence=evidence,
+            evidence=evidence or [summary],
             next_actions=["等待 ResolutionAgent 汇总判责"],
-            recommended_skills=[],
-            tools_called=[],
+            recommended_skills=tools_called,
+            tools_called=tools_called,
             path_verdict=summary,
+            hypotheses=resolved or None,
         )

@@ -46,7 +46,7 @@ class OperationAgent(BaseDiagnosisAgent):
         if scenario == "settlement_amount_mismatch":
             return await self._settlement_round_two(context, previous_results)
         if round_num >= 3:
-            return await self._follow_up(previous_results)
+            return await self._follow_up(context)
         return await self._order_round_two(context)
 
     async def _round_one(self, context: Dict, scenario: str, previous_results: List[Dict]) -> Msg:
@@ -148,20 +148,51 @@ class OperationAgent(BaseDiagnosisAgent):
             path_verdict="操作侧未见异常流程",
         )
 
-    async def _follow_up(self, previous_results: List[Dict]) -> Msg:
-        code_result = self._find_previous_result(previous_results, "CodeAgent")
-        data_result = self._find_previous_result(previous_results, "DataAgent")
-        evidence = [
-            code_result.get("path_verdict", ""),
-            data_result.get("path_verdict", ""),
+    async def _follow_up(self, context: Dict) -> Msg:
+        # 只验证本 Agent 能力范围内的 biz_flow / policy 假设（路由映射 = 验证能力映射）
+        op_hypotheses = [
+            h for h in self._pending_hypotheses(context)
+            if h.get("type") in {"biz_flow", "policy"}
         ]
-        evidence = [item for item in evidence if item]
+
+        summary = "操作侧复核后维持原判断，未发现新增用户操作异常"
+        resolved = []
+        tools_called: List[str] = []
+        evidence: List[str] = []
+
+        biz_hypotheses = [h for h in op_hypotheses if h.get("type") == "biz_flow"]
+        policy_hypotheses = [h for h in op_hypotheses if h.get("type") == "policy"]
+
+        if biz_hypotheses:
+            order_id = _context_value(context, "order_id")
+            order = await self._execute_tool("query_order", order_id=order_id)
+            tools_called.append("query_order")
+            timeline = (order.get("data") or {}).get("timeline", [])
+            ok = any("退款" in item.get("event", "") for item in timeline)
+            for hyp in biz_hypotheses:
+                msg = f"验证假设[{hyp.get('detail')}]：业务流 {'完整' if ok else '异常'}"
+                evidence.append(msg)
+                resolved.append(self._resolved_hypothesis(hyp, ok, [msg]))
+
+        if policy_hypotheses:
+            policy_result = await self._run_skill(
+                "search_policy_faq", context, "复核政策约束", "政策校验", []
+            )
+            tools_called.extend(policy_result.get("tools_called", []))
+            matches = policy_result.get("policy_matches", [])
+            ok = bool(matches)
+            for hyp in policy_hypotheses:
+                msg = f"验证假设[{hyp.get('detail')}]：政策约束 {'命中' if ok else '未命中'}"
+                evidence.append(msg)
+                resolved.append(self._resolved_hypothesis(hyp, ok, [msg]))
+
         return self._response(
             status="success",
-            summary="操作侧复核后维持原判断，未发现新增用户操作异常",
-            evidence=evidence,
+            summary=summary,
+            evidence=evidence or [summary],
             next_actions=["等待 ResolutionAgent 汇总"],
             recommended_skills=[],
-            tools_called=[],
-            path_verdict="操作侧维持无异常判断",
+            tools_called=tools_called,
+            path_verdict=summary,
+            hypotheses=resolved or None,
         )

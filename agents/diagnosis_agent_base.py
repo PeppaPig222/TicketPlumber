@@ -70,6 +70,33 @@ class BaseDiagnosisAgent(AgentBase):
                 return item.get("result", {}).get("data", {}) or {}
         return {}
 
+    def _pending_hypotheses(self, context: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """从黑板读待验证假设（由 Scheduler 假设路由注入 pending_hypotheses）。
+
+        返回 status == "pending" 的假设列表；开关关闭或未路由时为空列表。
+        """
+        facts = (context.get("collected_data") or {}).get("facts", {}) or {}
+        pending = facts.get("pending_hypotheses") or []
+        if isinstance(pending, dict):
+            pending = [pending]
+        return [
+            hyp for hyp in pending
+            if isinstance(hyp, dict) and hyp.get("status") == "pending" and hyp.get("type")
+        ]
+
+    def _resolved_hypothesis(
+        self, hypothesis: Dict[str, Any], verified: bool, evidence: List[str]
+    ) -> Dict[str, Any]:
+        """把待验证假设写成已验证/已驳斥（状态机 pending → verified/refuted）。
+
+        保留 type/detail/proposed_by，附加 verified_by 与验证证据。
+        """
+        resolved = dict(hypothesis)
+        resolved["status"] = "verified" if verified else "refuted"
+        resolved["verified_by"] = self.name
+        resolved["evidence"] = list(hypothesis.get("evidence") or []) + list(evidence)
+        return resolved
+
     async def _run_skill(
         self,
         skill_name: str,

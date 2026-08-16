@@ -252,15 +252,60 @@ class DataAgent(BaseDiagnosisAgent):
 
     async def _follow_up(self, context: Dict) -> Msg:
         scenario = context.get("scenario")
+        # 只验证本 Agent 能力范围内的 db_state 假设（路由映射 = 验证能力映射）
+        db_hypotheses = [
+            h for h in self._pending_hypotheses(context) if h.get("type") == "db_state"
+        ]
+
         summary = "数据侧复核后确认前序异常结论"
         if scenario == "settlement_amount_mismatch":
             summary = "数据侧复核后确认标签与规则冲突仍然存在"
+
+        resolved = []
+        tools_called: List[str] = []
+        evidence: List[str] = []
+
+        if db_hypotheses:
+            if scenario == "settlement_amount_mismatch":
+                merchant_id = _context_value(context, "merchant_id")
+                merchant = await self._execute_tool("query_merchant", merchant_id=merchant_id)
+                settlement = await self._execute_tool("query_settlement", merchant_id=merchant_id)
+                merchant_data = merchant.get("data", {}) if merchant.get("status") == "success" else {}
+                settlement_data = settlement.get("data", {}) if settlement.get("status") == "success" else {}
+                ratio_mismatch = settlement_data.get("actual_ratio") != settlement_data.get("settlement_ratio")
+                tag_mismatch = (
+                    merchant_data.get("label")
+                    and settlement_data.get("contract_type")
+                    and merchant_data.get("label") != settlement_data.get("contract_type")
+                )
+                conflict = bool(ratio_mismatch or tag_mismatch)
+                tools_called = ["query_merchant", "query_settlement"]
+                for hyp in db_hypotheses:
+                    msg = f"验证假设[{hyp.get('detail')}]：标签/比例冲突 {'仍存在' if conflict else '已消失'}"
+                    evidence.append(msg)
+                    resolved.append(self._resolved_hypothesis(hyp, conflict, [msg]))
+                summary = "数据侧复核后确认标签与规则冲突仍存在" if conflict else "数据侧复核后未再发现标签与规则冲突"
+            else:
+                order_id = _context_value(context, "order_id")
+                snapshot = await self._execute_tool("check_data", order_id=order_id)
+                logs = await self._execute_tool("trace_api", api_path="/api/refund/callback", order_id=order_id)
+                inconsistencies = snapshot.get("inconsistencies", [])
+                has_timeout = any(item.get("status_code") == 505 for item in logs.get("data", []))
+                conflict = bool(inconsistencies or has_timeout)
+                tools_called = ["check_data", "trace_api"]
+                for hyp in db_hypotheses:
+                    msg = f"验证假设[{hyp.get('detail')}]：跨表不一致/超时 {'仍存在' if conflict else '已消失'}"
+                    evidence.append(msg)
+                    resolved.append(self._resolved_hypothesis(hyp, conflict, [msg]))
+                summary = "数据侧复核后确认跨表不一致仍存在" if conflict else "数据侧复核后未再发现跨表不一致"
+
         return self._response(
             status="success",
             summary=summary,
-            evidence=[summary],
+            evidence=evidence or [summary],
             next_actions=["等待 ResolutionAgent 汇总"],
-            recommended_skills=[],
-            tools_called=[],
+            recommended_skills=tools_called,
+            tools_called=tools_called,
             path_verdict=summary,
+            hypotheses=resolved or None,
         )

@@ -43,6 +43,8 @@ class AgentResult(BaseModel):
     # 结构：{"type": 证据维度, "detail": 具体假设, "status": pending/verified/refuted,
     #        "proposed_by": Agent 名, "evidence": [支撑证据]}
     hypothesis: Optional[Dict[str, Any]] = None
+    # 假设列表：follow_up 验证阶段可能一次性写回多条已验证/已驳斥假设
+    hypotheses: Optional[List[Dict[str, Any]]] = None
 
     @model_validator(mode="after")
     def _sync_degraded(self) -> "AgentResult":
@@ -96,8 +98,9 @@ class DiagnosisState(BaseModel):
     def merge_round(self, round_result: Dict[str, Any]) -> None:
         """合并单轮 agent 结果中的业务事实，控制字段由 EXCLUDED_KEYS 排除。
 
-        假设字段（hypothesis）跨 Agent 累积到 facts["hypotheses"] 列表，
-        避免多个 Agent 各自产出的假设互相覆盖；其余字段保持覆盖语义。
+        假设字段（hypothesis / hypotheses）跨 Agent 累积到 facts["hypotheses"] 列表，
+        并按 (type, detail, proposed_by) upsert——同一条假设被验证后状态机
+        pending → verified/refuted，而非追加重复项；其余字段保持覆盖语义。
         """
         for result in round_result.get("results", []):
             data = result.get("data", {}) or {}
@@ -105,13 +108,32 @@ class DiagnosisState(BaseModel):
                 if key in self.EXCLUDED_KEYS:
                     continue
                 if key == "hypothesis" and isinstance(value, dict):
-                    hypotheses = self.facts.get("hypotheses")
-                    if not isinstance(hypotheses, list):
-                        hypotheses = []
-                    hypotheses.append(value)
-                    self.facts["hypotheses"] = hypotheses
+                    self._upsert_hypothesis(value)
+                    continue
+                if key == "hypotheses" and isinstance(value, list):
+                    for hyp in value:
+                        if isinstance(hyp, dict):
+                            self._upsert_hypothesis(hyp)
                     continue
                 self.facts[key] = value
+
+    def _upsert_hypothesis(self, hypothesis: Dict[str, Any]) -> None:
+        """按 (type, detail, proposed_by) 更新或追加一条假设到 facts["hypotheses"]。"""
+        hypotheses = self.facts.get("hypotheses")
+        if not isinstance(hypotheses, list):
+            hypotheses = []
+        for index, existing in enumerate(hypotheses):
+            if (
+                isinstance(existing, dict)
+                and existing.get("type") == hypothesis.get("type")
+                and existing.get("detail") == hypothesis.get("detail")
+                and existing.get("proposed_by") == hypothesis.get("proposed_by")
+            ):
+                hypotheses[index] = hypothesis
+                break
+        else:
+            hypotheses.append(hypothesis)
+        self.facts["hypotheses"] = hypotheses
 
     def add_round(self, intent: str, round_result: Dict[str, Any]) -> None:
         self.rounds.append({"intent": intent, "result": round_result})
