@@ -35,6 +35,9 @@ SCHEDULING_CONFIG = settings.scheduling.model_dump()
 # 记忆系统配置
 MEMORY_CONFIG = settings.memory.model_dump()
 
+# 持久化存储配置（trace / 诊断结果 / 反馈）
+STORAGE_CONFIG = settings.storage.model_dump()
+
 # 导出 Settings 单例，方便新代码直接访问
 __all__ = [
     "APP_CONFIG",
@@ -42,6 +45,7 @@ __all__ = [
     "SYSTEM_CONFIG",
     "RAG_CONFIG",
     "MEMORY_CONFIG",
+    "STORAGE_CONFIG",
     "RESILIENCE_CONFIG",
     "SCHEDULING_CONFIG",
     "settings",

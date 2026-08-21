@@ -217,6 +217,45 @@ class MemorySettings(BaseSettings):
     redis_db: int = Field(default=0, ge=0)
     redis_password: Optional[str] = Field(default=None)
 
+    # Redis 缓存层（RAG/工具结果缓存，跨会话共享，无 Redis 自动降级内存）
+    redis_cache_enabled: bool = Field(
+        default=False,
+        description="是否用 Redis 缓存 RAG/工具结果（未安装 redis 或连接失败时自动降级为内存）",
+    )
+    redis_cache_ttl_seconds: int = Field(
+        default=300,
+        ge=0,
+        description="Redis 缓存 TTL（秒）",
+    )
+
+
+class StorageSettings(BaseSettings):
+    """持久化存储配置（trace / 诊断结果 / 反馈）"""
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        env_prefix="DIAG_STORE_",
+        extra="ignore",
+    )
+
+    backend: str = Field(
+        default="sqlite",
+        description="持久化后端: sqlite / postgres(规划)",
+    )
+    db_path: str = Field(
+        default="data/diagbot.db",
+        description="SQLite 数据库文件路径（backend=sqlite 时使用）",
+    )
+    enable_persistent_trace: bool = Field(
+        default=True,
+        description="是否将 trace 持久化落库（关闭则退回内存版）",
+    )
+    enable_feedback: bool = Field(
+        default=True,
+        description="是否启用反馈闭环（记录用户对结论的修正）",
+    )
+
 
 class ResilienceSettings(BaseSettings):
     """连接与可用性：重试、熔断、健康检查"""
@@ -309,6 +348,7 @@ class Settings(BaseSettings):
     system: SystemSettings = SystemSettings()
     rag: RAGSettings = RAGSettings()
     memory: MemorySettings = MemorySettings()
+    storage: StorageSettings = StorageSettings()
     resilience: ResilienceSettings = ResilienceSettings()
     scheduling: SchedulingSettings = SchedulingSettings()
 

@@ -40,6 +40,7 @@ class MemoryManager:
         short_term_memory: Optional[BaseShortTermMemory] = None,
         long_term_memory: Optional[BaseLongTermMemory] = None,
         merchant_profile_store: Optional[BaseMerchantProfileStore] = None,
+        cache_backend=None,
     ):
         """
         初始化记忆管理器
@@ -79,6 +80,8 @@ class MemoryManager:
 
         # Session 内 RAG 检索结果缓存，避免单次诊断中重复调用 RAG
         self._rag_cache: Dict[str, Any] = {}
+        # 可选的跨会话缓存后端（Redis），未配置时用进程内 _rag_cache 降级
+        self._cache_backend = cache_backend
 
         logger.info(
             f"Memory manager initialized for user {user_id}, session {session_id}, "
@@ -281,10 +284,17 @@ class MemoryManager:
         return f"{self.session_id}:{hash(query)}"
 
     def get_rag_cache(self, query: str) -> Optional[Dict]:
-        return self._rag_cache.get(self._rag_cache_key(query))
+        key = self._rag_cache_key(query)
+        if self._cache_backend is not None:
+            return self._cache_backend.get(key)
+        return self._rag_cache.get(key)
 
     def set_rag_cache(self, query: str, result: Dict):
-        self._rag_cache[self._rag_cache_key(query)] = result
+        key = self._rag_cache_key(query)
+        if self._cache_backend is not None:
+            self._cache_backend.set(key, result)
+        else:
+            self._rag_cache[key] = result
 
     async def search_knowledge(
         self,

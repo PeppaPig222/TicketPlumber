@@ -31,22 +31,7 @@ from utils.errors import AppError, ErrorCode, ExecutionStatus, map_exception_to_
 from utils.logging_config import set_trace_id
 from utils.trace_collector import TraceCollector, format_trace_sse
 from utils.tool_registry import tool_registry
-
-
-class TraceRepository:
-    """内存版 trace 存储，便于 API 查询与 SSE 回放。"""
-
-    def __init__(self):
-        self._data: Dict[str, Dict[str, Any]] = {}
-
-    def save(self, trace_id: str, payload: Dict[str, Any]):
-        self._data[trace_id] = payload
-
-    def get(self, trace_id: str) -> Optional[Dict[str, Any]]:
-        return self._data.get(trace_id)
-
-    def count(self) -> int:
-        return len(self._data)
+from services.storage import TraceRepository
 
 
 # 模块启动时间，用于计算 uptime
@@ -71,12 +56,15 @@ class DiagnosisService:
         storage_path: str = "data/memory",
         rag_agent=None,
         llm_model=None,
+        cache_backend=None,
     ):
         self.trace_repo = trace_repo or TraceRepository()
         self.skill_registry = SkillRegistry()
         self.loop_decider = LoopDecider(max_rounds=3)
         self.user_id = user_id
         self.storage_path = storage_path
+        # Redis 缓存层（RAG/工具结果），未配置时为 None，走内存降级
+        self.cache_backend = cache_backend
         # 保留长期记忆实例，供 CLI 的 history/status/clear 命令兼容访问
         self.long_term_memory = LongTermMemory(user_id=user_id, storage_path=storage_path)
         # RAG Agent：外部注入优先，否则尝试懒加载
@@ -185,6 +173,7 @@ class DiagnosisService:
             session_id=effective_session_id,
             storage_path=self.storage_path,
             rag_agent=self.rag_agent,
+            cache_backend=self.cache_backend,
         )
         # 记录用户提问到短期记忆和长期聊天历史
         memory_manager.add_message("user", query, metadata={"trace_id": trace_id})
@@ -341,6 +330,9 @@ class DiagnosisService:
                 "trace": trace.get_trace(),
                 "diagnosis": diagnosis,
                 "events": format_trace_sse(trace.get_trace()),
+                "query": query,
+                "user_id": effective_user_id,
+                "session_id": effective_session_id,
             },
         )
 

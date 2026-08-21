@@ -34,6 +34,11 @@ pydantic-settings>=2.5.0      # 环境变量 + .env 配置
 # --- 监控 ---
 psutil>=6.0.0                 # 系统指标（CPU/内存/磁盘）
 
+# --- 持久化 / 缓存（生产化外壳，可选；未安装时自动降级为 SQLite/内存） ---
+redis>=5.0.0                  # Redis 缓存层（RAG/工具结果缓存）
+psycopg2-binary>=2.9.0        # PostgreSQL 长期记忆后端（可选）
+pymongo>=4.6.0                # MongoDB 商户画像后端（可选）
+
 # --- 测试 ---
 pytest>=8.3.0
 pytest-asyncio>=0.24.0        # 异步测试支持
