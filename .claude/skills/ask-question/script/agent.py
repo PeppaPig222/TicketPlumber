@@ -121,13 +121,17 @@ class RAGKnowledgeAgent(AgentBase):
         self.embedding_model = SentenceTransformer(model_path_or_id)
         self.embedding_dim = self.embedding_model.get_sentence_embedding_dimension()
 
-        # 初始化 Milvus Lite（本地文件存储）
-        milvus_db_path = str(self.knowledge_base_path / "milvus_lite.db")
-        logger.info(f"Initializing Milvus Lite at: {milvus_db_path}")
-
-        # pymilvus 2.6+ Milvus Lite 直接使用本地文件路径作为 uri
-        # db_name 显式指定 default，避免 uri 被误解析为含数据库名的多段路径
-        self.milvus_client = MilvusClient(uri=milvus_db_path, db_name="default")
+        # 初始化 Milvus：优先远程服务（容器化部署），否则本地 Milvus Lite
+        milvus_uri = self._retrieval_config.get("milvus_uri", "")
+        if milvus_uri:
+            logger.info(f"Connecting to remote Milvus at: {milvus_uri}")
+            self.milvus_client = MilvusClient(uri=milvus_uri, db_name="default")
+        else:
+            milvus_db_path = str(self.knowledge_base_path / "milvus_lite.db")
+            logger.info(f"Initializing Milvus Lite at: {milvus_db_path}")
+            # pymilvus 2.6+ Milvus Lite 直接使用本地文件路径作为 uri
+            self.milvus_client = MilvusClient(uri=milvus_db_path, db_name="default")
+            milvus_uri = milvus_db_path  # 记录实际 uri 供重连
         self._client_created_at = None  # 用于追踪客户端创建时间
 
         # 检查collection是否存在
@@ -145,8 +149,8 @@ class RAGKnowledgeAgent(AgentBase):
             logger.info(f"Created new collection: {collection_name}")
 
         self.initialized = True
-        self._milvus_db_path = milvus_db_path  # 保存路径用于重连
-        logger.info("RAG Knowledge Agent (Milvus Lite) initialized successfully")
+        self._milvus_uri = milvus_uri  # 保存 uri（远程地址或本地路径）用于重连
+        logger.info(f"RAG Knowledge Agent initialized (Milvus uri: {milvus_uri})")
 
     async def _ensure_connection(self):
         """确保 Milvus 连接正常，如果需要则重新创建客户端"""
@@ -164,7 +168,7 @@ class RAGKnowledgeAgent(AgentBase):
                         pass
 
                 # 重新创建客户端
-                self.milvus_client = MilvusClient(self._milvus_db_path, db_name="default")
+                self.milvus_client = MilvusClient(self._milvus_uri, db_name="default")
                 logger.info("Milvus client reconnected successfully")
             except Exception as reconnect_error:
                 logger.error(f"Failed to reconnect Milvus: {reconnect_error}")

@@ -90,6 +90,10 @@ class RAGSettings(BaseSettings):
         default="data/models/bge-small-zh-v1.5",
         description="嵌入模型路径或 HuggingFace ID",
     )
+    milvus_uri: str = Field(
+        default="",
+        description="Milvus 服务地址（如 http://milvus:19530）；为空则用本地 Milvus Lite",
+    )
     enable_intention_fallback: bool = Field(
         default=True,
         description="IntentionAgent 规则识别失败时是否启用 RAG fallback",
@@ -227,6 +231,17 @@ class MemorySettings(BaseSettings):
         ge=0,
         description="Redis 缓存 TTL（秒）",
     )
+
+    # PostgreSQL 配置（长期记忆后端，postgres_enabled=true 时使用，连不上自动降级 File）
+    postgres_enabled: bool = Field(
+        default=False,
+        description="是否用 PostgreSQL 存储长期记忆（用户偏好/诊断历史）",
+    )
+    postgres_host: str = Field(default="localhost")
+    postgres_port: int = Field(default=5432, ge=1, le=65535)
+    postgres_user: str = Field(default="postgres")
+    postgres_password: str = Field(default="postgres")
+    postgres_db: str = Field(default="diagbot")
 
 
 class StorageSettings(BaseSettings):

@@ -1,9 +1,116 @@
 # ============================================================
-# 小哈工单智能诊断助手 — Docker Compose 部署
+# 小哈工单智能诊断助手 — Docker Compose 部署（生产化外壳）
+#
+# 服务清单：
+#   diagbot   后端 API（FastAPI，端口 8000）
+#   redis     缓存层（RAG/工具结果缓存，端口 6379）
+#   postgres  长期记忆（用户偏好/诊断历史，端口 5432）
+#   milvus    向量库 RAG（standalone，端口 19530）
+#             └─ 依赖 etcd（元数据）+ minio（对象存储）
+#
+# 用法：
+#   1) 安装 Docker Desktop 并启动
+#   2) 准备 .env（复制 .env.example 填 LLM 配置）
+#   3) docker compose up -d          # 构建并后台启动
+#   4) docker compose ps             # 查看各服务健康状态
+#   5) docker compose logs -f diagbot # 查看后端日志
 # ============================================================
 version: "3.8"
 
 services:
+  # ---------- 缓存层 ----------
+  redis:
+    image: redis:7-alpine
+    container_name: diagbot-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ---------- 长期记忆 ----------
+  postgres:
+    image: postgres:16-alpine
+    container_name: diagbot-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: diagbot
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d diagbot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # ---------- 向量库 RAG：Milvus standalone（etcd + minio + milvus）----------
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.18
+    container_name: diagbot-etcd
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    volumes:
+      - etcd_data:/etcd
+    command: etcd -advertise-client-urls=http://etcd:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+    container_name: diagbot-minio
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    volumes:
+      - minio_data:/minio_data
+    command: minio server /minio_data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  milvus:
+    image: milvusdb/milvus:v2.6.9
+    container_name: diagbot-milvus
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+    volumes:
+      - milvus_data:/var/lib/milvus
+    ports:
+      - "19530:19530"
+      - "9091:9091"
+    depends_on:
+      etcd:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 90s
+
+  # ---------- 后端 API ----------
   diagbot:
     build: .
     container_name: diagbot
@@ -13,15 +120,35 @@ services:
     environment:
       - DIAG_SYS_ENV=production
       - DIAG_SYS_LOG_LEVEL=INFO
-      # 从宿主机 .env 读取真实 LLM 配置
+      # LLM 配置从宿主机 .env 读取
       - DIAG_LLM_API_KEY=${DIAG_LLM_API_KEY}
       - DIAG_LLM_MODEL_NAME=${DIAG_LLM_MODEL_NAME}
       - DIAG_LLM_BASE_URL=${DIAG_LLM_BASE_URL:-https://ark.cn-beijing.volces.com/api/v3}
+      # RAG：切到独立 Milvus 服务
+      - DIAG_RAG_MILVUS_URI=http://milvus:19530
+      # Redis 缓存层
+      - DIAG_MEM_REDIS_CACHE_ENABLED=true
+      - DIAG_MEM_REDIS_HOST=redis
+      - DIAG_MEM_REDIS_PORT=6379
+      # PostgreSQL 长期记忆
+      - DIAG_MEM_POSTGRES_ENABLED=true
+      - DIAG_MEM_POSTGRES_HOST=postgres
+      - DIAG_MEM_POSTGRES_PORT=5432
+      - DIAG_MEM_POSTGRES_USER=postgres
+      - DIAG_MEM_POSTGRES_PASSWORD=postgres
+      - DIAG_MEM_POSTGRES_DB=diagbot
     volumes:
-      # 持久化数据目录
+      # 持久化数据目录（SQLite trace/反馈 + memory + 模型）
       - ./data:/app/data
       # 挂载环境变量配置（只读）
       - ./.env:/app/.env:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      milvus:
+        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test:
@@ -33,3 +160,10 @@ services:
       timeout: 10s
       retries: 3
       start_period: 60s
+
+volumes:
+  redis_data:
+  postgres_data:
+  etcd_data:
+  minio_data:
+  milvus_data:

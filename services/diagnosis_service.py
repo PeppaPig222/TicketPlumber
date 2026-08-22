@@ -66,7 +66,7 @@ class DiagnosisService:
         # Redis 缓存层（RAG/工具结果），未配置时为 None，走内存降级
         self.cache_backend = cache_backend
         # 保留长期记忆实例，供 CLI 的 history/status/clear 命令兼容访问
-        self.long_term_memory = LongTermMemory(user_id=user_id, storage_path=storage_path)
+        self.long_term_memory = self._build_long_term_memory(user_id)
         # RAG Agent：外部注入优先，否则尝试懒加载
         self.rag_agent = rag_agent or self._load_rag_agent()
         # 专业 Agent 局部自主决策共享的 LLM 模型：外部注入优先（评测/测试用 mock），
@@ -110,6 +110,29 @@ class DiagnosisService:
                 extra={"error": str(e)},
             )
             return None
+
+    def _build_long_term_memory(self, user_id: str):
+        """按配置创建长期记忆后端：postgres_enabled 时用 PostgreSQL，否则 File。
+
+        PostgreSQL 连不上时静默降级为 File，保证容器/本地无 PG 时仍可运行。
+        """
+        mem = getattr(settings, "memory", None)
+        if mem is not None and getattr(mem, "postgres_enabled", False):
+            try:
+                from context.postgres_backend import PostgresLongTermMemory
+
+                dsn = (
+                    f"dbname={mem.postgres_db} user={mem.postgres_user} "
+                    f"password={mem.postgres_password} host={mem.postgres_host} "
+                    f"port={mem.postgres_port}"
+                )
+                return PostgresLongTermMemory(user_id=user_id, dsn=dsn)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(
+                    "PostgreSQL 长期记忆连接失败，降级为 File 后端",
+                    extra={"error": str(e)},
+                )
+        return LongTermMemory(user_id=user_id, storage_path=self.storage_path)
 
     async def diagnose(
         self,
@@ -174,6 +197,7 @@ class DiagnosisService:
             storage_path=self.storage_path,
             rag_agent=self.rag_agent,
             cache_backend=self.cache_backend,
+            long_term_memory=self._build_long_term_memory(effective_user_id),
         )
         # 记录用户提问到短期记忆和长期聊天历史
         memory_manager.add_message("user", query, metadata={"trace_id": trace_id})
