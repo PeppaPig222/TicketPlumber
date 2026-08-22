@@ -37,6 +37,7 @@ wheels/
 # Claude Code 本地配置（含敏感信息，不提交）
 .claude/settings.local.json
 .claude/claudian-settings.json
+.trae/documents
 
 # Data
 data/rag_knowledge/
