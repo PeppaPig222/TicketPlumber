@@ -108,6 +108,28 @@ class RAGSettings(BaseSettings):
         le=1.0,
         description="RAG fallback 采纳最小相似度阈值",
     )
+    enable_semantic_router: bool = Field(
+        default=True,
+        description="规则未命中时是否启用语义路由做场景分类（双阈值 + margin）",
+    )
+    semantic_router_high_threshold: float = Field(
+        default=0.6,
+        ge=0.0,
+        le=1.0,
+        description="语义路由 known 判定高阈值",
+    )
+    semantic_router_low_threshold: float = Field(
+        default=0.45,
+        ge=0.0,
+        le=1.0,
+        description="语义路由 ambiguous 判定低阈值，低于则 unknown",
+    )
+    semantic_router_margin: float = Field(
+        default=0.08,
+        ge=0.0,
+        le=1.0,
+        description="语义路由 top1 与 top2 最小分数差，低于则视为 ambiguous",
+    )
     enable_query_rewrite: bool = Field(
         default=True,
         description="是否启用基于记忆上下文的 RAG query rewrite",

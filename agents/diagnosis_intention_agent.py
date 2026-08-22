@@ -4,11 +4,14 @@
 工单诊断场景下的规则型 IntentionAgent。
 """
 import json
+import logging
 import re
 from typing import Any, Dict, List
 
 from agentscope.message import Msg
 from utils.tool_registry import tool_registry
+
+logger = logging.getLogger(__name__)
 
 
 class DiagnosisIntentionAgent:
@@ -25,6 +28,8 @@ class DiagnosisIntentionAgent:
         self.rag_agent = rag_agent
         # 统一记忆/RAG 入口；优先使用 memory_manager，未注入则回退 rag_agent
         self.memory_manager = memory_manager
+        # 语义路由器：规则未命中时做场景分类（懒加载，复用 RAG 的 embedding 模型）
+        self._semantic_router = None
 
     async def reply(self, x: Msg = None) -> Msg:
         payload = self._parse_payload(x)
@@ -85,33 +90,38 @@ class DiagnosisIntentionAgent:
         issue_type = ticket.get("issue_type") or facts.get("issue_type") or self._detect_issue_type(query)
         scenario = self._scenario_from_issue(issue_type, query)
 
-        # RAG fallback：当规则无法识别到具体场景时，查询知识库辅助推断
+        # 规则未命中时：先用语义路由做场景分类（双阈值 + margin），RAG 作为补充提示与兜底
         kb_hints = []
-        if (
-            scenario == "generic_ticket_diagnosis"
-            and RAG_CONFIG.get("enable_intention_fallback", True)
-        ):
-            kb_results = await self._search_kb(query)
-            if kb_results:
-                # 计算最高相似度（distance 越小越相似）
-                top_distance = min(r.get("distance", 1.0) for r in kb_results)
-                top_similarity = 1.0 - top_distance
-                threshold = RAG_CONFIG.get("min_similarity_threshold", 0.55)
+        route_info = None
+        if scenario == "generic_ticket_diagnosis":
+            if RAG_CONFIG.get("enable_semantic_router", True):
+                route_info = self._semantic_route(query)
+                if route_info and route_info["status"] == "known":
+                    scenario = route_info["scenario"]
 
-                kb_hints = [
-                    {
-                        "source": r.get("metadata", {}).get("source", "unknown"),
-                        "page": r.get("metadata", {}).get("page"),
-                        "title": r.get("metadata", {}).get("title", ""),
-                        "content": r.get("content", "")[:300],
-                        "similarity": round(1.0 - r.get("distance", 1.0), 3),
-                    }
-                    for r in kb_results[:3]
-                ]
+            # RAG 知识检索：保留 kb_hints 供后续 Agent 做证据；语义路由未判出 known 时仍兜底推断场景
+            if RAG_CONFIG.get("enable_intention_fallback", True):
+                kb_results = await self._search_kb(query)
+                if kb_results:
+                    # 计算最高相似度（distance 越小越相似）
+                    top_distance = min(r.get("distance", 1.0) for r in kb_results)
+                    top_similarity = 1.0 - top_distance
+                    threshold = RAG_CONFIG.get("min_similarity_threshold", 0.55)
 
-                if top_similarity >= threshold:
-                    kb_text = " ".join([r.get("content", "") for r in kb_results[:3]])
-                    scenario = self._scenario_from_issue(issue_type, f"{query} {kb_text}")
+                    kb_hints = [
+                        {
+                            "source": r.get("metadata", {}).get("source", "unknown"),
+                            "page": r.get("metadata", {}).get("page"),
+                            "title": r.get("metadata", {}).get("title", ""),
+                            "content": r.get("content", "")[:300],
+                            "similarity": round(1.0 - r.get("distance", 1.0), 3),
+                        }
+                        for r in kb_results[:3]
+                    ]
+
+                    if scenario == "generic_ticket_diagnosis" and top_similarity >= threshold:
+                        kb_text = " ".join([r.get("content", "") for r in kb_results[:3]])
+                        scenario = self._scenario_from_issue(issue_type, f"{query} {kb_text}")
 
         merchant_id = ticket.get("merchant_id") or facts.get("merchant_id") or self._extract_merchant_id(query)
         if not merchant_id:
@@ -129,6 +139,8 @@ class DiagnosisIntentionAgent:
             "scenario": scenario,
             "kb_hints": kb_hints,
         }
+        if route_info:
+            entities["route"] = route_info
         if ticket:
             entities["ticket_description"] = ticket.get("description")
         return entities
@@ -155,6 +167,47 @@ class DiagnosisIntentionAgent:
             return await self.rag_agent.search_knowledge(query, top_k=3)
         except Exception:
             return []
+
+    def _get_semantic_router(self):
+        """懒加载语义路由器，复用 RAG 的 embedding 模型，避免重复加载。"""
+        if self._semantic_router is not None:
+            return self._semantic_router
+
+        from config import RAG_CONFIG
+        from agents.semantic_router import SemanticRouter
+
+        encoder = None
+        if self.rag_agent is not None:
+            encoder = getattr(self.rag_agent, "embedding_model", None)
+            # 优先取 encode 方法引用；内部会做归一化
+            encoder = getattr(encoder, "encode", None)
+
+        if encoder is None:
+            logger.warning("语义路由无法获取 embedding 模型，降级为纯规则")
+            return None
+
+        try:
+            self._semantic_router = SemanticRouter(
+                encoder=encoder,
+                high_threshold=RAG_CONFIG.get("semantic_router_high_threshold", 0.6),
+                low_threshold=RAG_CONFIG.get("semantic_router_low_threshold", 0.45),
+                margin=RAG_CONFIG.get("semantic_router_margin", 0.08),
+            )
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"语义路由初始化失败，降级为纯规则: {e}")
+            self._semantic_router = None
+        return self._semantic_router
+
+    def _semantic_route(self, query: str):
+        """调用语义路由做场景分类，失败返回 None（由上层降级处理）。"""
+        router = self._get_semantic_router()
+        if router is None:
+            return None
+        try:
+            return router.route(query)
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"语义路由失败: {e}")
+            return None
 
     def _intent_name(self, round_num: int) -> str:
         if round_num == 1:
