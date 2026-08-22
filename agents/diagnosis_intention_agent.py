@@ -93,11 +93,15 @@ class DiagnosisIntentionAgent:
         # 规则未命中时：先用语义路由做场景分类（双阈值 + margin），RAG 作为补充提示与兜底
         kb_hints = []
         route_info = None
+        candidate_scenarios: List[str] = []
         if scenario == "generic_ticket_diagnosis":
             if RAG_CONFIG.get("enable_semantic_router", True):
                 route_info = self._semantic_route(query)
                 if route_info and route_info["status"] == "known":
                     scenario = route_info["scenario"]
+                elif route_info and route_info["status"] == "ambiguous":
+                    # 路由不自信：保持 generic 兜底，但下传候选场景供 Scheduler 做并集调度
+                    candidate_scenarios = route_info.get("candidate_scenarios", [])
 
             # RAG 知识检索：保留 kb_hints 供后续 Agent 做证据；语义路由未判出 known 时仍兜底推断场景
             if RAG_CONFIG.get("enable_intention_fallback", True):
@@ -119,7 +123,11 @@ class DiagnosisIntentionAgent:
                         for r in kb_results[:3]
                     ]
 
-                    if scenario == "generic_ticket_diagnosis" and top_similarity >= threshold:
+                    if (
+                        scenario == "generic_ticket_diagnosis"
+                        and not candidate_scenarios
+                        and top_similarity >= threshold
+                    ):
                         kb_text = " ".join([r.get("content", "") for r in kb_results[:3]])
                         scenario = self._scenario_from_issue(issue_type, f"{query} {kb_text}")
 
@@ -139,6 +147,8 @@ class DiagnosisIntentionAgent:
             "scenario": scenario,
             "kb_hints": kb_hints,
         }
+        if candidate_scenarios:
+            entities["candidate_scenarios"] = candidate_scenarios
         if route_info:
             entities["route"] = route_info
         if ticket:

@@ -288,6 +288,20 @@ class ScenarioScheduleBuilder(ScheduleBuilder):
                 ],
             },
         }
+        # 多候选场景并集调度：ambiguous 时对候选场景各自的调度计划取并集去重
+        candidate_scenarios = (ctx.key_entities or {}).get("candidate_scenarios", [])
+        if candidate_scenarios:
+            merged: List[AgentTask] = []
+            seen = set()
+            for sc in candidate_scenarios:
+                for task in schedules.get(sc, {}).get(ctx.round_num, []):
+                    # 去重键：agent + 产出目标；同一 Agent 不同场景的排查维度视为不同任务
+                    key = (task.agent_name, task.expected_output)
+                    if key not in seen:
+                        seen.add(key)
+                        merged.append(task)
+            return merged
+
         return schedules.get(ctx.scenario, {}).get(ctx.round_num, [])
 
 

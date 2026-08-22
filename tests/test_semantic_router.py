@@ -42,6 +42,8 @@ def test_ambiguous_small_margin():
     """query 与 A、B 相似度接近（margin 小）→ ambiguous，即使分数超过高阈值。"""
     result = _make_router([0.707, 0.707, 0.0]).route("模糊问题")
     assert result["status"] == "ambiguous"
+    # 候选场景集：两个场景都过 low 阈值，进入并集调度
+    assert set(result["candidate_scenarios"]) == {"A", "B"}
 
 
 def test_ambiguous_between_thresholds():

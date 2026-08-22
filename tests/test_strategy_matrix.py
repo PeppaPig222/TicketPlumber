@@ -71,6 +71,42 @@ class TestScenarioScheduleBuilder:
         tasks = ScenarioScheduleBuilder().build(ctx)
         assert tasks == []
 
+    def test_candidate_scenarios_union(self):
+        """ambiguous 多候选场景并集调度：两个场景的排查维度都保留。"""
+        ctx = SchedulingContext(
+            scenario="generic_ticket_diagnosis",
+            round_num=2,
+            key_entities={
+                "candidate_scenarios": [
+                    "order_status_anomaly",
+                    "settlement_amount_mismatch",
+                ]
+            },
+        )
+        tasks = ScenarioScheduleBuilder().build(ctx)
+        # 每个场景 round2 有 3 个 Agent，两个场景并集 = 6（去重键 agent+expected_output 均不同）
+        assert len(tasks) == 6
+        outputs = {t.expected_output for t in tasks}
+        assert "前后端代码与接口状态" in outputs  # order 的 CodeAgent
+        assert "比例与金额一致性" in outputs  # settlement 的 CodeAgent
+        # 每个 Agent 出现两次（两个场景的不同排查维度）
+        from collections import Counter
+
+        counts = Counter(t.agent_name for t in tasks)
+        assert counts["CodeAgent"] == 2
+        assert counts["OperationAgent"] == 2
+        assert counts["DataAgent"] == 2
+
+    def test_empty_candidate_scenarios_falls_back_to_scenario(self):
+        """无候选场景（known/unknown）时走原 scenario 调度，不受并集逻辑影响。"""
+        ctx = SchedulingContext(
+            scenario="order_status_anomaly",
+            round_num=2,
+            key_entities={"candidate_scenarios": []},
+        )
+        tasks = ScenarioScheduleBuilder().build(ctx)
+        assert len(tasks) == 3  # order round2 基础 3 个 Agent，未走并集
+
 
 class TestBasicInfoParallelRule:
     def test_marks_first_round_basic_agents(self):

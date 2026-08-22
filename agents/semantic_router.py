@@ -119,6 +119,14 @@ class SemanticRouter:
         else:
             status = "unknown"
 
+        # ambiguous 时输出候选场景集（过 low 阈值的 top2），供多候选场景并集调度
+        candidate_scenarios: List[str] = []
+        if status == "ambiguous":
+            candidate_scenarios = [
+                c["scenario"] for c in candidates[:2]
+                if c["score"] >= self.low_threshold
+            ]
+
         return {
             "status": status,
             "scenario": (
@@ -127,4 +135,5 @@ class SemanticRouter:
             "confidence": round(best["score"], 4),
             "margin": margin_val,
             "candidates": candidates,
+            "candidate_scenarios": candidate_scenarios,
         }
